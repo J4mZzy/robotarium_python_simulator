@@ -1,15 +1,17 @@
 import rps.robotarium as robotarium
 from rps.utilities.transformations import *
-from rps.utilities.barrier_certificates import *
+from barrier_certificates import *
 from rps.utilities.misc import *
 from rps.utilities.controllers import *
 
 import numpy as np
+import time
 
 # Instantiate Robotarium object
-N = 3
+N = 4
 
-r = robotarium.Robotarium(number_of_robots=N, show_figure=True, sim_in_real_time=True, initial_conditions=np.array([[-0.2*np.sqrt(3),0.2*np.sqrt(3),0],[-0.2,-0.2,0.4],[np.pi/6,np.pi/18*15,-np.pi/2]]))
+r = robotarium.Robotarium(number_of_robots=N, show_figure=True, sim_in_real_time=True, initial_conditions=np.array([[0.4,0.4,-0.4,-0.4],[0.4,-0.4,-0.4,0.4],[-np.pi*3/4,np.pi*3/4,np.pi/4,-np.pi/4]]))
+# for riangle: np.array([[-0.2*np.sqrt(3),0.2*np.sqrt(3),0],[-0.2,-0.2,0.4],[np.pi/6,np.pi/18*15,-np.pi/2]])
 
 # The robots will never reach their goal points so set iteration number
 iterations = 800
@@ -17,7 +19,7 @@ iterations = 800
 ## The areana is bounded between x \in (-1.6,1.6) y\in (-1,1) 
 
 # Default Barrier Parameters
-safety_radius = 0.12
+safety_radius = 0.17
 
 # Plotting Parameters
 
@@ -25,22 +27,28 @@ safety_radius = 0.12
 Gold = np.array([179,163,105])/255
 Navy = np.array([0,48,87])/255
 piMile= np.array([214,219,212])/255
-CM = np.vstack([Gold,Navy,piMile])
+Black = np.array([0,0,0])
+CM = np.vstack([Gold,Navy,piMile,Black])
 
 
 # CM = np.random.rand(N,3) # Random Colors
+
+
 safety_radius_marker_size = determine_marker_size(r,safety_radius) # Will scale the plotted markers to be the diameter of provided argument (in meters)
 font_height_meters = 0.2
 font_height_points = determine_font_size(r,font_height_meters) # Will scale the plotted font height to that of the provided argument (in meters)
 
 # Define goal points outside of the arena
-goal_points = np.array(np.array([[0.2*np.sqrt(3),-0.2*np.sqrt(3),0],[0.8/np.sqrt(3)-0.2,0.8/np.sqrt(3)-0.2,-0.2],[np.pi/6,np.pi/18*15,-np.pi/2]]))  # go straight for each 
+goal_points = np.array(np.array([[-0.4,-0.4,0.4,0.4],[-0.4,0.4,0.4,-0.4],[-np.pi*3/4,np.pi*3/4,np.pi/4,-np.pi/4]]))  # go straight for each 
 
 # Create unicycle position controller
 unicycle_position_controller = create_clf_unicycle_position_controller()
 
 # Create barrier certificates to avoid collision
-uni_barrier_cert = create_unicycle_barrier_certificate_with_boundary()
+uni_barrier_cert = create_unicycle_barrier_certificate_ellipse(barrier_gain=10,safety_a=0.3,safety_b=0.2)
+uni_barrier_cert2 = create_unicycle_barrier_certificate(barrier_gain=0.1,safety_radius=0.17)
+# uni_barrier_cert3 = create_unicycle_barrier_certificate_diamond(barrier_gain=10,safety_radius=0.12)
+
 
 
 # define x initially
@@ -86,7 +94,24 @@ for i in range(iterations):
     dxu = unicycle_position_controller(x, goal_points[:2][:])
 
     # Create safe control inputs (i.e., no collisions)
-    dxu = uni_barrier_cert(dxu, x)
+    dxu_1 = uni_barrier_cert(dxu, x)
+    dxu_2 = uni_barrier_cert2(dxu, x)
+    # dxu_3 = uni_barrier_cert3(dxu, x)
+
+    norm_dxu_1 = np.linalg.norm(dxu_1,ord=2)
+    norm_dxu_2 = np.linalg.norm(dxu_2,ord=2)
+    # norm_dxu_3 = np.linalg.norm(dxu_3,ord=2)
+
+    # Find the vector with the largest 2-norm
+    max_norm = max(norm_dxu_1, norm_dxu_2)
+
+    if max_norm == norm_dxu_1:
+        dxu = dxu_1
+    elif max_norm == norm_dxu_2:
+        dxu = dxu_2
+    # else:
+    #     dxu = dxu_3
+
 
     # Set the velocities by mapping the single-integrator inputs to unciycle inputs
     r.set_velocities(np.arange(N), dxu)
