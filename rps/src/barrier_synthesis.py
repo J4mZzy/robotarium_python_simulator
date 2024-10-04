@@ -41,12 +41,23 @@ font_height_points = determine_font_size(r,font_height_meters) # Will scale the 
 # Define goal points outside of the arena
 goal_points = np.array(np.array([[-0.4,-0.4,0.4,0.4],[-0.4,0.4,0.4,-0.4],[-np.pi*3/4,np.pi*3/4,np.pi/4,-np.pi/4]]))  # go straight for each 
 
-# Create unicycle position controller
-unicycle_position_controller = create_clf_unicycle_position_controller()
+# # Create unicycle position controller
+# unicycle_position_controller = create_clf_unicycle_position_controller()
+
+# Create single integrator position controller
+si_position_controller = create_si_position_controller()
+
+# We're working in single-integrator dynamics, and we don't want the robots
+# to collide.  Thus, we're going to use barrier certificates
+si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=100,safety_radius=0.17)
+si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=0.3,safety_b=0.45)
+
+# Create SI to UNI dynamics tranformation
+si_to_uni_dyn, uni_to_si_states = create_si_to_uni_mapping()
 
 # Create barrier certificates to avoid collision
-uni_barrier_cert = create_unicycle_barrier_certificate_ellipse(barrier_gain=10,safety_a=0.3,safety_b=0.2)
-uni_barrier_cert2 = create_unicycle_barrier_certificate(barrier_gain=0.1,safety_radius=0.17)
+# uni_barrier_cert = create_unicycle_barrier_certificate_ellipse(barrier_gain=10,safety_a=0.3,safety_b=0.2)
+# uni_barrier_cert2 = create_unicycle_barrier_certificate(barrier_gain=0.1,safety_radius=0.17)
 # uni_barrier_cert3 = create_unicycle_barrier_certificate_diamond(barrier_gain=10,safety_radius=0.12)
 
 
@@ -90,27 +101,55 @@ for i in range(iterations):
     # This should be removed when submitting to the Robotarium.
     g.set_sizes([determine_marker_size(r,safety_radius)])
 
-    # Create single-integrator control inputs
-    dxu = unicycle_position_controller(x, goal_points[:2][:])
+    # To compare distances, only take the first two elements of our pose array.
+    x_si = uni_to_si_states(x)
 
-    # Create safe control inputs (i.e., no collisions)
-    dxu_1 = uni_barrier_cert(dxu, x)
-    dxu_2 = uni_barrier_cert2(dxu, x)
-    # dxu_3 = uni_barrier_cert3(dxu, x)
+    # Initialize a velocities variable
+    si_velocities = np.zeros((2, N))
 
-    norm_dxu_1 = np.linalg.norm(dxu_1,ord=2)
-    norm_dxu_2 = np.linalg.norm(dxu_2,ord=2)
-    # norm_dxu_3 = np.linalg.norm(dxu_3,ord=2)
+    # Use a position controller to drive to the goal position
+    dxi = si_position_controller(x_si,goal_points[0:2,:])
 
-    # Find the vector with the largest 2-norm
-    max_norm = max(norm_dxu_1, norm_dxu_2)
+    # Use the barrier certificates to make sure that the agents don't collide
+    dxi_cir = si_barrier_cert_cir(dxi, x_si)
+    dxi_ellip = si_barrier_cert_ellip(dxi, x_si)
 
-    if max_norm == norm_dxu_1:
-        dxu = dxu_1
-    elif max_norm == norm_dxu_2:
-        dxu = dxu_2
-    # else:
-    #     dxu = dxu_3
+    # Use the second single-integrator-to-unicycle mapping to map to unicycle
+    # dynamics
+    dxu_cir = si_to_uni_dyn(dxi_cir, x)
+    dxu_ellip = si_to_uni_dyn(dxi_ellip, x)
+
+    norm_dxu_cir = np.linalg.norm(dxu_cir,ord=2)
+    norm_dxu_ellip = np.linalg.norm(dxu_ellip,ord=2)
+
+    max_norm = max(norm_dxu_cir, norm_dxu_ellip)
+
+    if max_norm == norm_dxu_cir:
+        dxu = dxu_cir
+    elif max_norm == norm_dxu_ellip:
+        dxu = dxu_ellip
+
+    # # Create single-integrator control inputs
+    # dxu = unicycle_position_controller(x, goal_points[:2][:])
+
+    # # Create safe control inputs (i.e., no collisions)
+    # dxu_1 = uni_barrier_cert(dxu, x)
+    # dxu_2 = uni_barrier_cert2(dxu, x)
+    # # dxu_3 = uni_barrier_cert3(dxu, x)
+
+    # norm_dxu_1 = np.linalg.norm(dxu_1,ord=2)
+    # norm_dxu_2 = np.linalg.norm(dxu_2,ord=2)
+    # # norm_dxu_3 = np.linalg.norm(dxu_3,ord=2)
+
+    # # Find the vector with the largest 2-norm
+    # max_norm = max(norm_dxu_1, norm_dxu_2)
+
+    # if max_norm == norm_dxu_1:
+    #     dxu = dxu_1
+    # elif max_norm == norm_dxu_2:
+    #     dxu = dxu_2
+    # # else:
+    # #     dxu = dxu_3
 
 
     # Set the velocities by mapping the single-integrator inputs to unciycle inputs
