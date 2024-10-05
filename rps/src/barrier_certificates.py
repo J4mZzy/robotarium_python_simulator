@@ -106,7 +106,7 @@ def create_single_integrator_barrier_certificate_ellipse(barrier_gain=100, safet
     assert safety_a > 0 and safety_b > 0, "The semi-major and semi-minor axes must be positive. Received a: %r, b: %r." % (safety_a, safety_b)
     assert magnitude_limit > 0, "The maximum linear velocity of the robot must be positive. Received %r." % magnitude_limit
 
-    def f(dxi, x):
+    def f(dxi, x,theta):
         # Check user input types
         assert isinstance(dxi, np.ndarray), "The single-integrator robot velocity command must be a numpy array. Received type %r." % type(dxi).__name__
         assert isinstance(x, np.ndarray), "The robot states must be a numpy array. Received type %r." % type(x).__name__
@@ -127,20 +127,21 @@ def create_single_integrator_barrier_certificate_ellipse(barrier_gain=100, safet
         for i in range(N-1):
             for j in range(i+1, N):
                 error = x[:, i] - x[:, j]
-                error_a = error[0] / safety_a
-                error_b = error[1] / safety_b
-                h = (error_a**2 + error_b**2) - 1
-                # Gradient of the barrier function
-                if np.mod(i,2) == 0:
-                    A[count, 2*i] = -2 * error[0] / safety_a**2
-                    A[count, 2*i+1] = -2 * error[1] / safety_b**2
-                    A[count, 2*j] = 2 * error[0] / safety_a**2
-                    A[count, 2*j+1] = 2 * error[1] / safety_b**2
-                else:
-                    A[count, 2*i] = -2 * error[1] / safety_b**2
-                    A[count, 2*i+1] = -2 * error[0] / safety_a**2
-                    A[count, 2*j] = 2 * error[1] / safety_b**2
-                    A[count, 2*j+1] = 2 * error[0] / safety_a**2
+                error_1 = (error[0]*np.cos(theta[j])-error[1]*np.sin(theta[j])) / safety_a
+                error_2 = (error[0]*np.sin(theta[j])+error[1]*np.cos(theta[j])) / safety_b
+                h = error_1**2 + error_2**2 - 1    
+
+                # if np.mod(i,2) == 0:
+                A[count, 2*i] = -2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_a**2 - 2 * ((error[0]-safety_a)*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_b**2
+                A[count, 2*i+1] = -2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*-np.sin(theta[j])/ safety_a**2 - 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.cos(theta[j])/ safety_b**2
+                A[count, 2*j] = 2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_b**2
+                A[count, 2*j+1] = 2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*-np.sin(theta[j])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.cos(theta[j])/ safety_b**2
+                # else:
+                #     A[count, 2*i] = -2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_b**2 - 2 * ((error[0]-safety_a)*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_a**2
+                #     A[count, 2*i+1] = -2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*-np.sin(theta[j])/ safety_b**2 - 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.cos(theta[j])/ safety_a**2
+                #     A[count, 2*j] = 2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_b**2 + 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_a**2
+                #     A[count, 2*j+1] = 2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*-np.sin(theta[j])/ safety_b**2 + 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.cos(theta[j])/ safety_a**2
+
                 b[count] = barrier_gain * h**3
                 count += 1
 
