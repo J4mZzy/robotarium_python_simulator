@@ -142,7 +142,7 @@ def create_single_integrator_barrier_certificate_ellipse(barrier_gain=100, safet
                 #     A[count, 2*j] = 2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_b**2 + 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_a**2
                 #     A[count, 2*j+1] = 2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*-np.sin(theta[j])/ safety_b**2 + 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.cos(theta[j])/ safety_a**2
 
-                b[count] = barrier_gain * h
+                b[count] = barrier_gain * h**3
                 count += 1
 
         # Threshold control inputs before QP
