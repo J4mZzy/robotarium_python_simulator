@@ -14,7 +14,7 @@ r = robotarium.Robotarium(number_of_robots=N, show_figure=True, sim_in_real_time
 # for riangle: np.array([[-0.2*np.sqrt(3),0.2*np.sqrt(3),0],[-0.2,-0.2,0.4],[np.pi/6,np.pi/18*15,-np.pi/2]])
 
 # The robots will never reach their goal points so set iteration number
-iterations = 500
+iterations = 600
 
 ## The areana is bounded between x \in (-1.6,1.6) y\in (-1,1) 
 
@@ -50,7 +50,7 @@ si_position_controller = create_si_position_controller()
 # We're working in single-integrator dynamics, and we don't want the robots
 # to collide.  Thus, we're going to use barrier certificates
 si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=100,safety_radius=0.22)
-si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=0.1,safety_a=0.17*2,safety_b=0.17)
+si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=0.32,safety_b=0.22)
 
 # Create SI to UNI dynamics tranformation
 si_to_uni_dyn, uni_to_si_states = create_si_to_uni_mapping()
@@ -63,12 +63,13 @@ si_to_uni_dyn, uni_to_si_states = create_si_to_uni_mapping()
 
 # define x initially
 x = r.get_poses()
+thetas = x[2,:]
 L = 0.05
 g = r.axes.scatter(x[0,:]+L*np.cos(x[2,:]), x[1,:]+L*np.sin(x[2,:]), s=np.pi/4*safety_radius_marker_size, marker='o', facecolors='none',edgecolors=CM,linewidth=3)
 
 # Create Goal Point Markers
 
-goal_marker_size_m = 0.08
+goal_marker_size_m = 0.1
 font_size = determine_font_size(r,0.05)
 line_width = 3
 
@@ -97,12 +98,12 @@ for i in range(iterations):
 
     # Angles
     thetas = x[2,:]
-    thetas=np.zeros_like(thetas)  # all-zeros lol
+    # thetas=np.zeros_like(thetas)  # all-zeros lol
     
     # Update Plotted Visualization
     g.set_offsets(x[:2,:].T+np.array([L*np.cos(x[2,:]),L*np.sin(x[2,:])]).T)
+
     # This updates the marker sizes if the figure window size is changed. 
-    # This should be removed when submitting to the Robotarium.
     g.set_sizes([determine_marker_size(r,safety_radius)])
 
     # To compare distances, only take the first two elements of our pose array.
@@ -116,7 +117,7 @@ for i in range(iterations):
 
     # Use the barrier certificates to make sure that the agents don't collide
     dxi_cir = si_barrier_cert_cir(dxi, x_si)
-    dxi_ellip = si_barrier_cert_ellip(dxi, x_si,-thetas)
+    dxi_ellip = si_barrier_cert_ellip(dxi, x_si,thetas)
 
     # Use the second single-integrator-to-unicycle mapping to map to unicycle
     # dynamics
