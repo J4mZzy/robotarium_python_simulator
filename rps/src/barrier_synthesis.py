@@ -13,7 +13,7 @@ N = 4
 r = robotarium.Robotarium(number_of_robots=N, show_figure=True, sim_in_real_time=True, initial_conditions=np.array([[0.4,0.4,-0.4,-0.4],[0.4,-0.4,-0.4,0.4],[-np.pi*3/4,np.pi*3/4,np.pi/4,-np.pi/4]]))
 # for riangle: np.array([[-0.2*np.sqrt(3),0.2*np.sqrt(3),0],[-0.2,-0.2,0.4],[np.pi/6,np.pi/18*15,-np.pi/2]])
 
-# The robots will never reach their goal points so set iteration number
+# The robots will never reach their goal points so set iteration number (not used here)
 iterations = 600
 
 ## The areana is bounded between x \in (-1.6,1.6) y\in (-1,1) 
@@ -49,7 +49,7 @@ si_position_controller = create_si_position_controller()
 
 # We're working in single-integrator dynamics, and we don't want the robots
 # to collide.  Thus, we're going to use barrier certificates
-si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=100,safety_radius=0.22)
+si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=1000,safety_radius=0.22)
 si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=0.32,safety_b=0.22)
 
 # Create SI to UNI dynamics tranformation
@@ -89,9 +89,8 @@ for ii in range(goal_points.shape[1])]
 
 r.step()
 
-# While the number of robots at the required poses is less
-# than N...
-for i in range(iterations):
+# While the goal is not reached
+while(1):
 
     # Get poses of agents
     x = r.get_poses()
@@ -130,7 +129,7 @@ for i in range(iterations):
     max_norm = max(norm_dxu_cir, norm_dxu_ellip)
 
     if max_norm == norm_dxu_cir:
-        dxu = dxu_cir 
+        dxu = dxu_cir
     elif max_norm == norm_dxu_ellip:
         dxu = dxu_ellip
 
@@ -159,6 +158,9 @@ for i in range(iterations):
 
     # Set the velocities by mapping the single-integrator inputs to unciycle inputs
     r.set_velocities(np.arange(N), dxu)
+
+    if(np.linalg.norm(goal_points[:2,:] - x_si) < 0.05):
+        break
 
     # Iterate the simulation
     r.step()
