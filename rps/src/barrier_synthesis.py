@@ -49,8 +49,8 @@ si_position_controller = create_si_position_controller()
 
 # We're working in single-integrator dynamics, and we don't want the robots
 # to collide.  Thus, we're going to use barrier certificates
-si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=1000,safety_radius=0.22)
-si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=0.32,safety_b=0.22)
+si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=100,safety_radius=0.17)
+si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=10,safety_a=0.24,safety_b=0.17)
 
 # Create SI to UNI dynamics tranformation
 si_to_uni_dyn, uni_to_si_states = create_si_to_uni_mapping()
