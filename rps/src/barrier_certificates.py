@@ -61,6 +61,7 @@ def create_single_integrator_barrier_certificate(barrier_gain=100, safety_radius
         H = sparse(matrix(2*np.identity(2*N)))
 
         count = 0
+        #Centralized QP
         for i in range(N-1):
             for j in range(i+1, N):
                 error = x[:, i] - x[:, j]
@@ -124,6 +125,8 @@ def create_single_integrator_barrier_certificate_ellipse(barrier_gain=100, safet
         H = sparse(matrix(2 * np.identity(2*N)))
 
         count = 0
+
+        # Centralized QP
         for i in range(N-1):
             for j in range(i+1, N):
                 error = x[:, i] - x[:, j]
