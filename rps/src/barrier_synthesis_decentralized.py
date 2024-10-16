@@ -26,7 +26,7 @@ iterations = 600
 # This portion of the code generates points on a circle enscribed in a 6x6 square
 # that's centered on the origin.  The robots switch positions on the circle.
 # Define the radius of the circle for robot initial positions
-N = 10
+N = 16
 circle_radius = 0.8
 
 # Calculate initial positions in a circular formation
@@ -68,17 +68,7 @@ for i in range(N//2):
 # CM = np.vstack([Gold,Navy,piMile,Black])
 
 
-# CM = np.random.rand(N,3) # Random Colors
-# Use a predefined colormap from Matplotlib
-cmap = plt.get_cmap("tab20")  # You can try "Set3", "tab10", or any other colormap
-
-# Generate colors from the colormap for N agents
-CM = cmap(np.linspace(0, 1, N))  # Generate N colors evenly spaced within the colormap
-
-
-################for Robotarium#######################
-# Set CM to be all black for N agents
-# CM = np.array([[0, 0, 0]] * N)
+CM = np.random.rand(N,3) # Random Colors
  
 
 # Default Barrier Parameters
@@ -100,18 +90,13 @@ si_position_controller = create_si_position_controller()
 # to collide.  Thus, we're going to use barrier certificates (in a centrialized way)
 
 # Initialize parameters
-radius = 0.17
-a= 0.20
-b = 0.17
+radius = 0.22
+a= 0.3
+b = 0.22
 
-si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=1000,safety_radius=radius)
-si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a,safety_b=b)
-prev_CBF_shape = 1 # initialize the shape flag as 1 (1 is circle and 2 is ellipse)
-
-# Initialize the transition variables
-transition_in_progress = False
-start_time = None
-transition_duration = 0.5  # Duration for the morphing transition in seconds
+# Initialize a list of decentralized barrier certificates for each agent
+si_barrier_certs_cir = [create_single_integrator_barrier_certificate_decentralized(agent_index, barrier_gain=1000, safety_radius=radius) for agent_index in range(N)]
+# si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=100,safety_a=a,safety_b=b)
 
 ###############################################################################
 ## TODO: add a decentrailzed implementation here
@@ -161,6 +146,8 @@ trajectories = {i: [] for i in range(N)}
 while(1):
     # for i in range(iterations):
 
+        # Initialize a velocities variable
+        si_velocities = np.zeros((2, N))
         # Get poses of agents
         x = r.get_poses()
 
@@ -178,12 +165,12 @@ while(1):
         # Use a position controller to drive to the goal position
         dxi = si_position_controller(x_si,goal_points[:2,:])
 
-        # Use the barrier certificates to make sure that the agents don't collide
-        dxi_cir = si_barrier_cert_cir(dxi, x_si)
-        # dxi_cir = si_barrier_cert_ellip(dxi, x_si,thetas)
-        dxi_ellip = si_barrier_cert_ellip(dxi, x_si,thetas)
+        # Initialize an array to store the modified control inputs after applying barrier certificates
+        dxi_cir = np.zeros((2, N))  # Assuming it's for 2D control inputs (x, y)
 
-        ############### progress? ######################
+        # Apply decentralized barrier certificates for each agent
+        for agent_index in range(N):
+            dxi_cir[agent_index] = si_barrier_certs_cir[agent_index](dxi, x_si)
 
 
         ###############################################################################
@@ -193,66 +180,36 @@ while(1):
 
         # Use the second single-integrator-to-unicycle mapping to map to unicycle
         # dynamics
-        dxu_cir = si_to_uni_dyn(dxi_cir, x)
-        dxu_ellip = si_to_uni_dyn(dxi_ellip, x)
+        # dxu_cir = si_to_uni_dyn(dxi_cir, x)
+        # dxu_ellip = si_to_uni_dyn(dxi_ellip, x)
 
-        norm_dxi_cir = np.linalg.norm(dxi_cir,ord=2)
-        norm_dxi_ellip = np.linalg.norm(dxi_ellip,ord=2)
+        # norm_dxu_cir = np.linalg.norm(dxu_cir,ord=2)
+        # norm_dxu_ellip = np.linalg.norm(dxu_ellip,ord=2)
 
-        if not transition_in_progress:
-            # for smooth transitions
-            if norm_dxi_cir >= norm_dxi_ellip:
-                max_norm = norm_dxi_cir # keep the circle
-                current_CBF_shape = 1  # Circle
-            else:
-                max_norm = max(norm_dxi_cir,norm_dxi_ellip)
-                current_CBF_shape = 2  # Ellipse
-        
-        # Check if the shape has changed
-        if current_CBF_shape != prev_CBF_shape and not transition_in_progress:
-            # Shape has changed, start the transition
-            transition_in_progress = True
-            start_time = time.time()  # Reset the start time for transition
-            prev_CBF_shape = current_CBF_shape  # Update the flag with the new shape
-        
-        # If transition is in progress, calculate alpha and morph between shapes
-        if transition_in_progress:
-            time_elapsed = time.time() - start_time  # Calculate elapsed time
-            alpha = np.clip(time_elapsed / transition_duration, 0, 1)  # Compute alpha
-            
-            if current_CBF_shape == 1:
-                # Morph from ellipse to circle
-                dxu = (1 - alpha) * dxu_ellip + alpha * dxu_cir
-                a = (1 - alpha) * 0.20 + alpha * 0.15  # Interpolate ellipse width to circle radius
-                b = 0.15  # Keep b constant, or you can interpolate if needed
-            elif current_CBF_shape == 2:
-                # Morph from circle to ellipse
-                dxu = (1 - alpha) * dxu_cir + alpha * dxu_ellip
-                a = (1 - alpha) * 0.15 + alpha * 0.20  # Interpolate circle radius to ellipse width
-                b = 0.15  # Keep b constant, or adjust if you want the height to morph too
+        # # for smooth transitions
+        # if norm_dxu_cir >= norm_dxu_ellip:
+        #     max_norm = norm_dxu_cir # keep the circle
+        # else:
+        #     max_norm = max(norm_dxu_cir,norm_dxu_ellip)
 
-            # If the transition is complete, stop the morphing
-            if alpha >= 1:
-                transition_in_progress = False
-        else:
-            if current_CBF_shape == 1:
-                dxu = dxu_cir
-                a = 0.15
-                b = 0.15
-            # g = r.axes.scatter(x[0,:]+L*np.cos(x[2,:]), x[1,:]+L*np.sin(x[2,:]), s=np.pi/4*safety_radius_marker_size, marker='o', facecolors='none',edgecolors=CM,linewidth=3)
+        # # Remove previous scatter plot markers
+        # for g in g_objects:
+        #     g.remove()
 
-            elif current_CBF_shape == 2:
-                dxu = dxu_ellip
-                a = 0.20
-                b = 0.15
-            # g = r.axes.scatter(x[0,:]+L*np.cos(x[2,:]), x[1,:]+L*np.sin(x[2,:]), s=np.pi/4*safety_radius_marker_size, marker='D', facecolors='none',edgecolors=CM,linewidth=3)
+        # # Clear the list after removing markers
+        # g_objects = []  
 
-        # Remove previous scatter plot markers
-        for g in g_objects:
-            g.remove()
+        # if max_norm == norm_dxu_cir:
+        #     dxu = dxu_cir
+        #     a = 0.17
+        #     b = 0.17
+        #     # g = r.axes.scatter(x[0,:]+L*np.cos(x[2,:]), x[1,:]+L*np.sin(x[2,:]), s=np.pi/4*safety_radius_marker_size, marker='o', facecolors='none',edgecolors=CM,linewidth=3)
 
-        # Clear the list after removing markers
-        g_objects = []  
+        # elif max_norm == norm_dxu_ellip:
+        #     dxu = dxu_ellip
+        #     a = 0.22
+        #     b = 0.17
+        #     # g = r.axes.scatter(x[0,:]+L*np.cos(x[2,:]), x[1,:]+L*np.sin(x[2,:]), s=np.pi/4*safety_radius_marker_size, marker='D', facecolors='none',edgecolors=CM,linewidth=3)
 
         # # Update Plotted Visualization
         # g.set_offsets(x[:2,:].T+np.array([L*np.cos(x[2,:]),L*np.sin(x[2,:])]).T)
@@ -261,6 +218,9 @@ while(1):
         # g.set_sizes([determine_marker_size(r,safety_radius)])
 
         # g_objects.append(g)
+
+        # Map the modified single-integrator inputs to unicycle dynamics
+        dxu = si_to_uni_dyn(dxi_cir, x)
 
         # Create and add ellipses to the axes
         for i in range(N):
@@ -289,8 +249,6 @@ r.call_at_scripts_end()
 
 # Plotting the position trajectories
 print("Preparing to plot trajectories...")
-# Set the font globally to Times New Roman
-plt.rcParams['font.family'] = 'Times New Roman'
 plt.figure(figsize=(10, 10))
 for i in range(N):
     trajectory = np.array(trajectories[i])
@@ -298,15 +256,15 @@ for i in range(N):
 
 plt.scatter(goal_points[0, :], goal_points[1, :], color=CM, marker='*', s=200, label='Goals',linewidth=3)
 # Increase font sizes for title, labels, and legend
-# plt.title('Robot Trajectories', fontsize=40)
-plt.xlabel('X Position', fontsize=36)
-plt.ylabel('Y Position', fontsize=36)
-plt.xticks(fontsize=32)  # Font size for x-axis ticks
-plt.yticks(fontsize=32)  # Font size for y-axis ticks
+plt.title('Robot Trajectories', fontsize=20)
+plt.xlabel('X Position', fontsize=18)
+plt.ylabel('Y Position', fontsize=18)
+plt.xticks(fontsize=16)  # Font size for x-axis ticks
+plt.yticks(fontsize=16)  # Font size for y-axis ticks
 
 # Adjust legend positioning to fit well within the plot
-# legend = plt.legend(fontsize=12, loc='upper left') 
-# legend.set_draggable(True)  # Make the legend draggable
+legend = plt.legend(fontsize=12, loc='upper left') 
+legend.set_draggable(True)  # Make the legend draggable
 
 plt.show(block=True)  # Keep the plot window open
 print("Plotting complete.")
