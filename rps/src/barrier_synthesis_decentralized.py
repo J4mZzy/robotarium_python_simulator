@@ -26,7 +26,7 @@ iterations = 600
 # This portion of the code generates points on a circle enscribed in a 6x6 square
 # that's centered on the origin.  The robots switch positions on the circle.
 # Define the radius of the circle for robot initial positions
-N = 16
+N = 10
 circle_radius = 0.8
 
 # Calculate initial positions in a circular formation
@@ -68,7 +68,17 @@ for i in range(N//2):
 # CM = np.vstack([Gold,Navy,piMile,Black])
 
 
-CM = np.random.rand(N,3) # Random Colors
+# CM = np.random.rand(N,3) # Random Colors
+# Use a predefined colormap from Matplotlib
+cmap = plt.get_cmap("tab20")  # You can try "Set3", "tab10", or any other colormap
+
+# Generate colors from the colormap for N agents
+CM = cmap(np.linspace(0, 1, N))  # Generate N colors evenly spaced within the colormap
+
+
+################for Robotarium#######################
+# Set CM to be all black for N agents
+CM = np.array([[0, 0, 0]] * N)
  
 
 # Default Barrier Parameters
@@ -90,28 +100,40 @@ si_position_controller = create_si_position_controller()
 # to collide.  Thus, we're going to use barrier certificates (in a centrialized way)
 
 # Initialize parameters
-radius = 0.22
+radius = 0.2
 a= 0.3
-b = 0.22
+b = 0.2
 
-# Initialize a list of decentralized barrier certificates for each agent
-si_barrier_certs_cir = [create_single_integrator_barrier_certificate_decentralized(agent_index, barrier_gain=1000, safety_radius=radius) for agent_index in range(N)]
-# si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=100,safety_a=a,safety_b=b)
 
 ###############################################################################
 ## TODO: add a decentrailzed implementation here
 ## Each agent will treat the other agents as barriers  
-
+# Initialize a list of decentralized barrier certificates for each agent
+# the index corresponds to the local agent
+si_barrier_certs_cir = [create_single_integrator_barrier_certificate_decentralized(agent_index, barrier_gain=100, safety_radius=radius) for agent_index in range(N)]
+si_barrier_certs_ellip = [create_single_integrator_barrier_certificate_ellipse_decentralized(agent_index, barrier_gain=100,safety_a=a,safety_b=b) for agent_index in range(N)]
+# print(np.shape(si_barrier_certs_cir))
+prev_CBF_shape = np.ones(N) # initialize the shape flag as 1s (1 is circle and 2 is ellipse)
+current_CBF_shape = np.ones(N)  # To be updated for each agent
 ###############################################################################
 
 # Create SI to UNI dynamics tranformation
 si_to_uni_dyn, uni_to_si_states = create_si_to_uni_mapping()
 
 # define x initially
-x = r.get_poses()
-thetas = x[2,:]
+x = r.get_poses() #(3xN) shape, x,y, theta, e.g., agent 1 has x[:,0]
+# print(x[:,0])
+# print(np.shape(x))
+thetas = x[2,:]   
+# print(thetas)
 L = 0.05
 # g = r.axes.scatter(x[0,:]+L*np.cos(x[2,:]), x[1,:]+L*np.sin(x[2,:]), s=np.pi/4*safety_radius_marker_size, marker='o', facecolors='none',edgecolors=CM,linewidth=3)
+
+# Initialize the transition variables
+transition_in_progress = [False]*N # N flags
+start_time = np.zeros(N)
+transition_duration = 0.5  # Duration for the morphing transition in seconds
+
 
 
 # Create Goal Point Markers
@@ -145,91 +167,112 @@ trajectories = {i: [] for i in range(N)}
 # While the goal is not reached
 while(1):
     # for i in range(iterations):
-
-        # Initialize a velocities variable
-        si_velocities = np.zeros((2, N))
         # Get poses of agents
         x = r.get_poses()
-
-        # Store current positions in the trajectory list
-        for i in range(N):
-            trajectories[i].append(x[:2, i].copy())  # Store the (x, y) position
 
         # Angles
         thetas = x[2,:]
         # thetas=np.zeros_like(thetas)  # all-zeros lol
+
+        # Remove previous scatter plot markers
+        for g in g_objects:
+            g.remove()
+
+        # Clear the list after removing markers
+        g_objects = []  
+
+        # Store current positions in the trajectory list
+        for i in range(N):
+            trajectories[i].append(x[:2, i].copy())  # Store the (x, y) position
 
         # To compare distances, only take the first two elements of our pose array.(look ahead dynamics)
         x_si = uni_to_si_states(x)
 
         # Use a position controller to drive to the goal position
         dxi = si_position_controller(x_si,goal_points[:2,:])
+        # print(dxi)
 
         # Initialize an array to store the modified control inputs after applying barrier certificates
-        dxi_cir = np.zeros((2, N))  # Assuming it's for 2D control inputs (x, y)
-
+        dxi_cir = np.zeros((2, N))
+        dxi_ellip = np.zeros((2, N))
+        dxi_final = np.zeros((2, N))  # This will store the result with the greater norm
+        # print(np.shape(dxi_cir))
+        dxu = np.zeros((2, N))  # Store final unicycle control inputs
         # Apply decentralized barrier certificates for each agent
         for agent_index in range(N):
-            dxi_cir[agent_index] = si_barrier_certs_cir[agent_index](dxi, x_si)
+            # print(np.shape(si_barrier_certs_cir[agent_index](dxi, x_si)))
+            dxi_cir[:,agent_index] = si_barrier_certs_cir[agent_index](dxi, x_si).reshape(2)
+            # dxi_ellip[:,agent_index] = si_barrier_certs_ellip[agent_index](dxi, x_si,thetas).reshape(2)
+            try:
+                # Attempt to apply the barrier certificate for the ellipse shape
+                dxi_ellip[:, agent_index] = si_barrier_certs_ellip[agent_index](dxi, x_si, thetas).reshape(2)
+            except ValueError as e:
+                # If an error occurs, set the control input for this agent to zeros
+                print(f"Error for agent {agent_index}: {e}")
+                dxi_ellip[:, agent_index] = np.zeros(2)  # Set the control input to zero for this agent
 
+            # Convert dxi to unicycle dynamics
+            dxu_cir = si_to_uni_dyn(dxi_cir, x)
+            dxu_ellip = si_to_uni_dyn(dxi_ellip, x)
 
-        ###############################################################################
-        ## TODO: add a decentrailzed implementation here
+            # Calculate the norms of each control input
+            norm_dxi_cir = np.linalg.norm(dxi_cir[:, agent_index],ord=2)
+            norm_dxi_ellip = np.linalg.norm(dxi_ellip[:, agent_index],ord=2)
 
-        ###############################################################################
+            # If no transition is in progress for this agent, determine the current shape
+            if not transition_in_progress[agent_index]:
+                if norm_dxi_cir >= norm_dxi_ellip:
+                    current_CBF_shape[agent_index] = 1  # Circle
+                else:
+                    current_CBF_shape[agent_index] = 2  # Ellipse
 
-        # Use the second single-integrator-to-unicycle mapping to map to unicycle
-        # dynamics
-        # dxu_cir = si_to_uni_dyn(dxi_cir, x)
-        # dxu_ellip = si_to_uni_dyn(dxi_ellip, x)
+            # Check if the shape has changed for this agent
+            if current_CBF_shape[agent_index] != prev_CBF_shape[agent_index] and not transition_in_progress[agent_index]:
+                # Shape has changed, start the transition for this agent
+                transition_in_progress[agent_index] = True
+                start_time[agent_index] = time.time()  # Reset the start time for transition
+                prev_CBF_shape[agent_index] = current_CBF_shape[agent_index]  # Update the flag with the new shape
 
-        # norm_dxu_cir = np.linalg.norm(dxu_cir,ord=2)
-        # norm_dxu_ellip = np.linalg.norm(dxu_ellip,ord=2)
+            # If transition is in progress for this agent, calculate alpha and morph between shapes
+            if transition_in_progress[agent_index]:
+                time_elapsed = time.time() - start_time[agent_index]  # Calculate elapsed time for this agent
+                alpha = np.clip(time_elapsed / transition_duration, 0, 1)  # Compute alpha (progress in transition)
 
-        # # for smooth transitions
-        # if norm_dxu_cir >= norm_dxu_ellip:
-        #     max_norm = norm_dxu_cir # keep the circle
-        # else:
-        #     max_norm = max(norm_dxu_cir,norm_dxu_ellip)
+                # Morph between shapes based on current shape
+                if current_CBF_shape[agent_index] == 1:
+                    # Morph from ellipse to circle
+                    dxu[:, agent_index] = (1 - alpha) * dxu_ellip[:, agent_index] + alpha * dxu_cir[:, agent_index]
+                    a = (1 - alpha) * 0.20 + alpha * 0.15  # Interpolate ellipse width to circle radius
+                    b = 0.15  # Keep height constant, or adjust if needed
+                elif current_CBF_shape[agent_index] == 2:
+                    # Morph from circle to ellipse
+                    dxu[:, agent_index] = (1 - alpha) * dxu_cir[:, agent_index] + alpha * dxu_ellip[:, agent_index]
+                    a = (1 - alpha) * 0.15 + alpha * 0.20  # Interpolate circle radius to ellipse width
+                    b = 0.15  # Keep height constant, or adjust if needed
 
-        # # Remove previous scatter plot markers
-        # for g in g_objects:
-        #     g.remove()
+                # If the transition is complete for this agent, stop the morphing
+                if alpha >= 1:
+                    transition_in_progress[agent_index] = False
 
-        # # Clear the list after removing markers
-        # g_objects = []  
+            # If no transition is happening, simply apply the current shape control input
+            else:
+                if current_CBF_shape[agent_index] == 1:
+                    dxu[:, agent_index] = dxu_cir[:, agent_index]
+                    a = 0.15
+                    b = 0.15
+                elif current_CBF_shape[agent_index] == 2:
+                    dxu[:, agent_index] = dxu_ellip[:, agent_index]
+                    a = 0.20
+                    b = 0.15
 
-        # if max_norm == norm_dxu_cir:
-        #     dxu = dxu_cir
-        #     a = 0.17
-        #     b = 0.17
-        #     # g = r.axes.scatter(x[0,:]+L*np.cos(x[2,:]), x[1,:]+L*np.sin(x[2,:]), s=np.pi/4*safety_radius_marker_size, marker='o', facecolors='none',edgecolors=CM,linewidth=3)
-
-        # elif max_norm == norm_dxu_ellip:
-        #     dxu = dxu_ellip
-        #     a = 0.22
-        #     b = 0.17
-        #     # g = r.axes.scatter(x[0,:]+L*np.cos(x[2,:]), x[1,:]+L*np.sin(x[2,:]), s=np.pi/4*safety_radius_marker_size, marker='D', facecolors='none',edgecolors=CM,linewidth=3)
-
-        # # Update Plotted Visualization
-        # g.set_offsets(x[:2,:].T+np.array([L*np.cos(x[2,:]),L*np.sin(x[2,:])]).T)
-
-        # # This updates the marker sizes if the figure window size is changed. 
-        # g.set_sizes([determine_marker_size(r,safety_radius)])
-
-        # g_objects.append(g)
-
-        # Map the modified single-integrator inputs to unicycle dynamics
-        dxu = si_to_uni_dyn(dxi_cir, x)
-
-        # Create and add ellipses to the axes
-        for i in range(N):
-            ellipse = Ellipse(xy=(x[0, i] + L * np.cos(x[2, i]), x[1, i] + L * np.sin(x[2, i])),
-                            width=a, height=b, angle=np.degrees(thetas[i]),
-                            facecolor='none', edgecolor=CM[i], linewidth=2)
+            # Now draw the ellipse or circle for this agent based on its current shape
+            ellipse = Ellipse(
+                xy=(x[0, agent_index] + L * np.cos(x[2, agent_index]), x[1, agent_index] + L * np.sin(x[2, agent_index])),
+                width=a, height=b, angle=np.degrees(thetas[agent_index]),
+                facecolor='none', edgecolor=CM[agent_index], linewidth=2
+            )
             r.axes.add_patch(ellipse)
-            g_objects.append(ellipse)  # Keep track of the patches
-        
+            g_objects.append(ellipse)  # Keep track of the patches for updating later        
 
         # Set the velocities by mapping the single-integrator inputs to unciycle inputs
         r.set_velocities(np.arange(N), dxu)
@@ -245,26 +288,26 @@ while(1):
 r.call_at_scripts_end()
 
 
-## plot block
+# ## plot block
 
-# Plotting the position trajectories
-print("Preparing to plot trajectories...")
-plt.figure(figsize=(10, 10))
-for i in range(N):
-    trajectory = np.array(trajectories[i])
-    plt.plot(trajectory[:, 0], trajectory[:, 1], label=f'Robot {i + 1}', color=CM[i],linewidth=3)
+# # Plotting the position trajectories
+# print("Preparing to plot trajectories...")
+# plt.figure(figsize=(10, 10))
+# for i in range(N):
+#     trajectory = np.array(trajectories[i])
+#     plt.plot(trajectory[:, 0], trajectory[:, 1], label=f'Robot {i + 1}', color=CM[i],linewidth=3)
 
-plt.scatter(goal_points[0, :], goal_points[1, :], color=CM, marker='*', s=200, label='Goals',linewidth=3)
-# Increase font sizes for title, labels, and legend
-plt.title('Robot Trajectories', fontsize=20)
-plt.xlabel('X Position', fontsize=18)
-plt.ylabel('Y Position', fontsize=18)
-plt.xticks(fontsize=16)  # Font size for x-axis ticks
-plt.yticks(fontsize=16)  # Font size for y-axis ticks
+# plt.scatter(goal_points[0, :], goal_points[1, :], color=CM, marker='*', s=200, label='Goals',linewidth=3)
+# # Increase font sizes for title, labels, and legend
+# plt.title('Robot Trajectories', fontsize=20)
+# plt.xlabel('X Position', fontsize=18)
+# plt.ylabel('Y Position', fontsize=18)
+# plt.xticks(fontsize=16)  # Font size for x-axis ticks
+# plt.yticks(fontsize=16)  # Font size for y-axis ticks
 
-# Adjust legend positioning to fit well within the plot
-legend = plt.legend(fontsize=12, loc='upper left') 
-legend.set_draggable(True)  # Make the legend draggable
+# # Adjust legend positioning to fit well within the plot
+# legend = plt.legend(fontsize=12, loc='upper left') 
+# legend.set_draggable(True)  # Make the legend draggable
 
-plt.show(block=True)  # Keep the plot window open
-print("Plotting complete.")
+# plt.show(block=True)  # Keep the plot window open
+# print("Plotting complete.")

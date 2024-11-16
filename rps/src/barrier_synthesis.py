@@ -26,7 +26,7 @@ iterations = 600
 # This portion of the code generates points on a circle enscribed in a 6x6 square
 # that's centered on the origin.  The robots switch positions on the circle.
 # Define the radius of the circle for robot initial positions
-N = 10
+N = 10 # 2,4,8,16,20
 circle_radius = 0.8
 
 # Calculate initial positions in a circular formation
@@ -78,7 +78,7 @@ CM = cmap(np.linspace(0, 1, N))  # Generate N colors evenly spaced within the co
 
 ################for Robotarium#######################
 # Set CM to be all black for N agents
-# CM = np.array([[0, 0, 0]] * N)
+CM = np.array([[0, 0, 0]] * N)
  
 
 # Default Barrier Parameters
@@ -100,11 +100,11 @@ si_position_controller = create_si_position_controller()
 # to collide.  Thus, we're going to use barrier certificates (in a centrialized way)
 
 # Initialize parameters
-radius = 0.17
-a= 0.20
-b = 0.17
+radius = 0.20
+a = 0.25
+b = 0.20
 
-si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=1000,safety_radius=radius)
+si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=100,safety_radius=radius)
 si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a,safety_b=b)
 prev_CBF_shape = 1 # initialize the shape flag as 1 (1 is circle and 2 is ellipse)
 
@@ -182,6 +182,7 @@ while(1):
         dxi_cir = si_barrier_cert_cir(dxi, x_si)
         # dxi_cir = si_barrier_cert_ellip(dxi, x_si,thetas)
         dxi_ellip = si_barrier_cert_ellip(dxi, x_si,thetas)
+        # dxi_ellip = si_barrier_cert_cir(dxi, x_si)
 
         ############### progress? ######################
 
@@ -222,12 +223,12 @@ while(1):
             
             if current_CBF_shape == 1:
                 # Morph from ellipse to circle
-                dxu = (1 - alpha) * dxu_ellip + alpha * dxu_cir
+                dxu = dxu_cir
                 a = (1 - alpha) * 0.20 + alpha * 0.15  # Interpolate ellipse width to circle radius
                 b = 0.15  # Keep b constant, or you can interpolate if needed
             elif current_CBF_shape == 2:
                 # Morph from circle to ellipse
-                dxu = (1 - alpha) * dxu_cir + alpha * dxu_ellip
+                dxu = dxu_ellip
                 a = (1 - alpha) * 0.15 + alpha * 0.20  # Interpolate circle radius to ellipse width
                 b = 0.15  # Keep b constant, or adjust if you want the height to morph too
 
@@ -239,14 +240,11 @@ while(1):
                 dxu = dxu_cir
                 a = 0.15
                 b = 0.15
-            # g = r.axes.scatter(x[0,:]+L*np.cos(x[2,:]), x[1,:]+L*np.sin(x[2,:]), s=np.pi/4*safety_radius_marker_size, marker='o', facecolors='none',edgecolors=CM,linewidth=3)
 
             elif current_CBF_shape == 2:
                 dxu = dxu_ellip
                 a = 0.20
                 b = 0.15
-            # g = r.axes.scatter(x[0,:]+L*np.cos(x[2,:]), x[1,:]+L*np.sin(x[2,:]), s=np.pi/4*safety_radius_marker_size, marker='D', facecolors='none',edgecolors=CM,linewidth=3)
-
         # Remove previous scatter plot markers
         for g in g_objects:
             g.remove()

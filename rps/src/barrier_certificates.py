@@ -117,15 +117,15 @@ def create_single_integrator_barrier_certificate_decentralized(agent_index, barr
         #Check user input ranges/sizes
         assert x.shape[0] == 2, "In the function created by the create_single_integrator_barrier_certificate function, the dimension of the single integrator robot states (x) must be 2 ([x;y]). Recieved dimension %r." % x.shape[0]
         assert dxi.shape[0] == 2, "In the function created by the create_single_integrator_barrier_certificate function, the dimension of the robot single integrator velocity command (dxi) must be 2 ([x_dot;y_dot]). Recieved dimension %r." % dxi.shape[0]
-        assert x.shape[1] == dxi.shape[1], "In the function created by the create_single_integrator_barrier_certificate function, the number of robot states (x) must be equal to the number of robot single integrator velocity commands (dxi). Recieved a current robot pose input array (x) of size %r x %r and single integrator velocity array (dxi) of size %r x %r." % (x.shape[0], x.shape[1], dxi.shape[0], dxi.shape[1])
+        # assert x.shape[1] == dxi.shape[1], "In the function created by the create_single_integrator_barrier_certificate function, the number of robot states (x) must be equal to the number of robot single integrator velocity commands (dxi). Recieved a current robot pose input array (x) of size %r x %r and single integrator velocity array (dxi) of size %r x %r." % (x.shape[0], x.shape[1], dxi.shape[0], dxi.shape[1])
 
         
         # Initialize some variables for computational savings
         N = dxi.shape[1]
         num_constraints = int(N-1)
-        A = np.zeros((num_constraints, 2*(N-1)))
+        A = np.zeros((num_constraints, 2))
         b = np.zeros(num_constraints)
-        H = sparse(matrix(2*np.identity(2*(N-1))))
+        H = sparse(matrix(2*np.identity(2)))
 
         count = 0
         #Centralized QP
@@ -133,23 +133,105 @@ def create_single_integrator_barrier_certificate_decentralized(agent_index, barr
             if j != agent_index:  # Skip the agent itself
                 error = x[:, agent_index] - x[:, j]  # Relative position
                 h = (error[0]*error[0] + error[1]*error[1]) - np.power(safety_radius, 2)
-                A[count, (2*count, (2*count+1))] = 2*error
+                A[count, (0, 1)] = -2*error
                 b[count] = barrier_gain*np.power(h, 3)
 
                 count += 1
 
         # Threshold control inputs before QP
-        norms = np.linalg.norm(dxi, 2, 0)
-        idxs_to_normalize = (norms > magnitude_limit)
-        dxi[:, idxs_to_normalize] *= magnitude_limit/norms[idxs_to_normalize]
+        norm = np.linalg.norm(dxi[:,agent_index], 2)
+        # idxs_to_normalize = (norms > magnitude_limit)
+        if norm > magnitude_limit:
+            dxi *= magnitude_limit/norm
 
-        dxi = np.delete(dxi, agent_index, axis=1)
-        f = -2*np.reshape(dxi, 2*(N-1), order='F')
+        f = -2*np.reshape(dxi[:,agent_index], 2, order='F')
         result = qp(H, matrix(f), matrix(A), matrix(b))['x']
 
         return np.reshape(result, (2, -1), order='F')
 
     return f
+
+def create_single_integrator_barrier_certificate_ellipse_decentralized(agent_index, barrier_gain=100, safety_a=0.17, safety_b=0.12, magnitude_limit=0.2):
+    """Creates a barrier certificate for a single-integrator system with an elliptical safety region.
+    
+    barrier_gain: double (controls how quickly agents can approach each other. lower = slower)
+    safety_a: double (semi-major axis of the safety ellipse)
+    safety_b: double (semi-minor axis of the safety ellipse)
+    magnitude_limit: double (how fast the robot can move linearly)
+
+    -> function (the barrier certificate function)
+    """
+
+    # Check user input types
+    assert isinstance(agent_index, int), "Agent index must be an integer. Received type %r." % type(agent_index).__name__
+    assert isinstance(barrier_gain, (int, float)), "The barrier gain must be an integer or float. Received type %r." % type(barrier_gain).__name__
+    assert isinstance(safety_a, (int, float)), "The semi-major axis of the safety ellipse must be an integer or float. Received type %r." % type(safety_a).__name__
+    assert isinstance(safety_b, (int, float)), "The semi-minor axis of the safety ellipse must be an integer or float. Received type %r." % type(safety_b).__name__
+    assert isinstance(magnitude_limit, (int, float)), "The maximum linear velocity of the robot must be an integer or float. Received type %r." % type(magnitude_limit).__name__
+
+    # Check user input ranges/sizes
+    assert barrier_gain > 0, "The barrier gain must be positive. Received %r." % barrier_gain
+    assert safety_a > 0 and safety_b > 0, "The semi-major and semi-minor axes must be positive. Received a: %r, b: %r." % (safety_a, safety_b)
+    assert magnitude_limit > 0, "The maximum linear velocity of the robot must be positive. Received %r." % magnitude_limit
+
+    def f(dxi, x,theta):
+        # Check user input types
+        assert isinstance(dxi, np.ndarray), "The single-integrator robot velocity command must be a numpy array. Received type %r." % type(dxi).__name__
+        assert isinstance(x, np.ndarray), "The robot states must be a numpy array. Received type %r." % type(x).__name__
+
+        # Check user input ranges/sizes
+        assert x.shape[0] == 2, "The dimension of the single integrator robot states must be 2 ([x;y]). Received dimension %r." % x.shape[0]
+        assert dxi.shape[0] == 2, "The dimension of the robot single integrator velocity command must be 2 ([x_dot;y_dot]). Received dimension %r." % dxi.shape[0]
+        assert x.shape[1] == dxi.shape[1], "The number of robot states must be equal to the number of robot single integrator velocity commands. Received x: %r x %r, dxi: %r x %r." % (x.shape[0], x.shape[1], dxi.shape[0], dxi.shape[1])
+
+        # Initialize variables for computational savings
+        N = dxi.shape[1]
+        num_constraints = int((N - 1))
+        A = np.zeros((num_constraints, 2))
+        b = np.zeros(num_constraints)
+        H = sparse(matrix(2 * np.identity(2)))
+
+        count = 0
+
+        # decentralized QP
+        for j in range(N):
+            if j != agent_index:  # Skip the agent itself
+                error = x[:, agent_index] - x[:, j]
+                error_1 = (error[0]*np.cos(theta[agent_index])+error[1]*np.sin(theta[agent_index])) / safety_a
+                error_2 = (error[0]*np.sin(theta[agent_index])-error[1]*np.cos(theta[agent_index])) / safety_b
+                h = error_1**2 + error_2**2 - 1    
+
+                # if np.mod(agent_index,2) == 0:
+                    # theta[agent_index] = theta[agent_index] + np.pi/4
+                A[count, 0] = -2 * ((error[0])*np.cos(theta[agent_index])+(error[1])*np.sin(theta[agent_index]))*np.cos(theta[agent_index])/ safety_a**2 - 2 * ((error[0])*np.sin(theta[agent_index])-(error[1])*np.cos(theta[agent_index]))*np.sin(theta[agent_index])/ safety_b**2
+                A[count, 1] = -2 * ((error[0])*np.cos(theta[agent_index])+(error[1])*np.sin(theta[agent_index]))*np.sin(theta[agent_index])/ safety_a**2 - 2 * ((error[0])*np.sin(theta[agent_index])-(error[1])*np.cos(theta[agent_index]))*-np.cos(theta[agent_index])/ safety_b**2
+                A[count, 2*j] = 2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_b**2
+                A[count, 2*j+1] = 2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.sin(theta[j])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*-np.cos(theta[j])/ safety_b**2
+                # else:
+                #     # theta[agent_index] = theta[agent_index] - np.pi/4
+                #     A[count, 0] = -2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_b**2 - 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_a**2
+                #     A[count, 1] = -2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*-np.sin(theta[j])/ safety_b**2 - 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.cos(theta[j])/ safety_a**2
+                #     A[count, 2*j] = 2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_b**2 + 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_a**2
+                #     A[count, 2*j+1] = 2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*-np.sin(theta[j])/ safety_b**2 + 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.cos(theta[j])/ safety_a**2
+
+                b[count] = barrier_gain * h**3
+                count += 1
+
+        # Threshold control inputs before QP
+        norm = np.linalg.norm(dxi[:,agent_index], 2)
+        # idxs_to_normalize = (norms > magnitude_limit)
+        if norm > magnitude_limit:
+            dxi *= magnitude_limit/norm
+
+        f = -2*np.reshape(dxi[:,agent_index], 2, order='F')
+        result = qp(H, matrix(f), matrix(A), matrix(b))['x']
+
+        return np.reshape(result, (2, -1), order='F')
+
+    return f
+
+
+
 
 def create_single_integrator_barrier_certificate_ellipse(barrier_gain=100, safety_a=0.17, safety_b=0.12, magnitude_limit=0.2):
     """Creates a barrier certificate for a single-integrator system with an elliptical safety region.
@@ -191,6 +273,7 @@ def create_single_integrator_barrier_certificate_ellipse(barrier_gain=100, safet
         H = sparse(matrix(2 * np.identity(2*N)))
 
         count = 0
+        # theta=theta+np.pi/4
 
         # Centralized QP
         for i in range(N-1):
@@ -215,7 +298,7 @@ def create_single_integrator_barrier_certificate_ellipse(barrier_gain=100, safet
                 count += 1
 
         # Threshold control inputs before QP
-        norms = np.linalg.norm(dxi, axis=0)
+        norms = np.linalg.norm(dxi, 2, axis=0)
         idxs_to_normalize = (norms > magnitude_limit)
         dxi[:, idxs_to_normalize] *= magnitude_limit / norms[idxs_to_normalize]
 
