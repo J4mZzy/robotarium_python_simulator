@@ -35,7 +35,7 @@ initial_x = circle_radius * np.cos(theta)  # X coordinates
 initial_y = circle_radius * np.sin(theta)  # Y coordinates
 
 # Calculate headings (facing inward)
-initial_heading = theta + np.pi  # Heading towards the center (add pi to point inward)
+initial_heading = theta + np.pi # Heading towards the center (add pi to point inward)
 
 # Combine initial positions into the required format (x, y, theta)
 initial_conditions = np.array([initial_x, initial_y, initial_heading])
@@ -78,7 +78,7 @@ CM = cmap(np.linspace(0, 1, N))  # Generate N colors evenly spaced within the co
 
 ################for Robotarium#######################
 # Set CM to be all black for N agents
-CM = np.array([[0, 0, 0]] * N)
+# CM = np.array([[0, 0, 0]] * N)
  
 
 # Default Barrier Parameters
@@ -100,9 +100,9 @@ si_position_controller = create_si_position_controller()
 # to collide.  Thus, we're going to use barrier certificates (in a centrialized way)
 
 # Initialize parameters
-radius = 0.2
-a= 0.3
-b = 0.2
+radius = 0.25
+a= 0.25
+b = 0.3
 
 
 ###############################################################################
@@ -201,14 +201,19 @@ while(1):
         # Apply decentralized barrier certificates for each agent
         for agent_index in range(N):
             # print(np.shape(si_barrier_certs_cir[agent_index](dxi, x_si)))
-            dxi_cir[:,agent_index] = si_barrier_certs_cir[agent_index](dxi, x_si).reshape(2)
+            try:
+                dxi_cir[:,agent_index] = si_barrier_certs_cir[agent_index](dxi, x_si).reshape(2)
+            except ValueError as e:
+                # If an error occurs, set the control input for this agent to zeros
+                print(f"Error for agent {agent_index}: {e} for Circular CBF")
+                dxi_ellip[:, agent_index] = np.zeros(2)  # Set the control input to zero for this agent
             # dxi_ellip[:,agent_index] = si_barrier_certs_ellip[agent_index](dxi, x_si,thetas).reshape(2)
             try:
-                # Attempt to apply the barrier certificate for the ellipse shape
+                #Attempt to apply the barrier certificate for the ellipse shape
                 dxi_ellip[:, agent_index] = si_barrier_certs_ellip[agent_index](dxi, x_si, thetas).reshape(2)
             except ValueError as e:
                 # If an error occurs, set the control input for this agent to zeros
-                print(f"Error for agent {agent_index}: {e}")
+                print(f"Error for agent {agent_index}: {e} for Elliptical CBF")
                 dxi_ellip[:, agent_index] = np.zeros(2)  # Set the control input to zero for this agent
 
             # Convert dxi to unicycle dynamics
@@ -216,8 +221,8 @@ while(1):
             dxu_ellip = si_to_uni_dyn(dxi_ellip, x)
 
             # Calculate the norms of each control input
-            norm_dxi_cir = np.linalg.norm(dxi_cir[:, agent_index],ord=2)
-            norm_dxi_ellip = np.linalg.norm(dxi_ellip[:, agent_index],ord=2)
+            norm_dxi_cir = np.linalg.norm(dxu_cir[:, agent_index],ord=2)
+            norm_dxi_ellip = np.linalg.norm(dxu_ellip[:, agent_index],ord=2)
 
             # If no transition is in progress for this agent, determine the current shape
             if not transition_in_progress[agent_index]:
@@ -288,26 +293,26 @@ while(1):
 r.call_at_scripts_end()
 
 
-# ## plot block
+## plot block
 
-# # Plotting the position trajectories
-# print("Preparing to plot trajectories...")
-# plt.figure(figsize=(10, 10))
-# for i in range(N):
-#     trajectory = np.array(trajectories[i])
-#     plt.plot(trajectory[:, 0], trajectory[:, 1], label=f'Robot {i + 1}', color=CM[i],linewidth=3)
+# Plotting the position trajectories
+print("Preparing to plot trajectories...")
+plt.figure(figsize=(10, 10))
+for i in range(N):
+    trajectory = np.array(trajectories[i])
+    plt.plot(trajectory[:, 0], trajectory[:, 1], label=f'Robot {i + 1}', color=CM[i],linewidth=3)
 
-# plt.scatter(goal_points[0, :], goal_points[1, :], color=CM, marker='*', s=200, label='Goals',linewidth=3)
-# # Increase font sizes for title, labels, and legend
-# plt.title('Robot Trajectories', fontsize=20)
-# plt.xlabel('X Position', fontsize=18)
-# plt.ylabel('Y Position', fontsize=18)
-# plt.xticks(fontsize=16)  # Font size for x-axis ticks
-# plt.yticks(fontsize=16)  # Font size for y-axis ticks
+plt.scatter(goal_points[0, :], goal_points[1, :], color=CM, marker='*', s=200, label='Goals',linewidth=3)
+# Increase font sizes for title, labels, and legend
+plt.title('Robot Trajectories', fontsize=20)
+plt.xlabel('X Position', fontsize=18)
+plt.ylabel('Y Position', fontsize=18)
+plt.xticks(fontsize=16)  # Font size for x-axis ticks
+plt.yticks(fontsize=16)  # Font size for y-axis ticks
 
-# # Adjust legend positioning to fit well within the plot
-# legend = plt.legend(fontsize=12, loc='upper left') 
-# legend.set_draggable(True)  # Make the legend draggable
+# Adjust legend positioning to fit well within the plot
+legend = plt.legend(fontsize=12, loc='upper left') 
+legend.set_draggable(True)  # Make the legend draggable
 
-# plt.show(block=True)  # Keep the plot window open
-# print("Plotting complete.")
+plt.show(block=True)  # Keep the plot window open
+print("Plotting complete.")

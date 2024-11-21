@@ -12,6 +12,8 @@ from scipy.special import comb
 
 from rps.utilities.transformations import *
 
+DIST_IGNORE_MULTIPLIER = 4
+
 # Disable output of CVXOPT
 options['show_progress'] = False
 # Change default options of CVXOPT for faster solving
@@ -133,11 +135,14 @@ def create_single_integrator_barrier_certificate_decentralized(agent_index, barr
             if j != agent_index:  # Skip the agent itself
                 error = x[:, agent_index] - x[:, j]  # Relative position
                 h = (error[0]*error[0] + error[1]*error[1]) - np.power(safety_radius, 2)
+                if (error[0]*error[0] + error[1]*error[1]) > (safety_radius * DIST_IGNORE_MULTIPLIER) ** 2:
+                    # if agents are too far, ignore this collision pair
+                    continue
                 A[count, (0, 1)] = -2*error
                 b[count] = barrier_gain*np.power(h, 3)
 
                 count += 1
-
+        print(f"Circular CBF; Agent#{agent_index} has {count} collision pairs.")
         # Threshold control inputs before QP
         norm = np.linalg.norm(dxi[:,agent_index], 2)
         # idxs_to_normalize = (norms > magnitude_limit)
@@ -200,13 +205,16 @@ def create_single_integrator_barrier_certificate_ellipse_decentralized(agent_ind
                 error_1 = (error[0]*np.cos(theta[agent_index])+error[1]*np.sin(theta[agent_index])) / safety_a
                 error_2 = (error[0]*np.sin(theta[agent_index])-error[1]*np.cos(theta[agent_index])) / safety_b
                 h = error_1**2 + error_2**2 - 1    
-
+                if h > (safety_a * DIST_IGNORE_MULTIPLIER) ** 2 - 1:
+                # if np.linalg.norm(error) > safety_a * DIST_IGNORE_MULTIPLIER:
+                    # if agents are too far, ignore this collision pair
+                    continue
                 # if np.mod(agent_index,2) == 0:
-                    # theta[agent_index] = theta[agent_index] + np.pi/4
+                #     theta[agent_index] = theta[agent_index] + np.pi/4
                 A[count, 0] = -2 * ((error[0])*np.cos(theta[agent_index])+(error[1])*np.sin(theta[agent_index]))*np.cos(theta[agent_index])/ safety_a**2 - 2 * ((error[0])*np.sin(theta[agent_index])-(error[1])*np.cos(theta[agent_index]))*np.sin(theta[agent_index])/ safety_b**2
                 A[count, 1] = -2 * ((error[0])*np.cos(theta[agent_index])+(error[1])*np.sin(theta[agent_index]))*np.sin(theta[agent_index])/ safety_a**2 - 2 * ((error[0])*np.sin(theta[agent_index])-(error[1])*np.cos(theta[agent_index]))*-np.cos(theta[agent_index])/ safety_b**2
-                A[count, 2*j] = 2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_b**2
-                A[count, 2*j+1] = 2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.sin(theta[j])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*-np.cos(theta[j])/ safety_b**2
+                # A[count+1, 0] = 2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_b**2
+                # A[count+1, 1] = 2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.sin(theta[j])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*-np.cos(theta[j])/ safety_b**2
                 # else:
                 #     # theta[agent_index] = theta[agent_index] - np.pi/4
                 #     A[count, 0] = -2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_b**2 - 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_a**2
@@ -215,8 +223,10 @@ def create_single_integrator_barrier_certificate_ellipse_decentralized(agent_ind
                 #     A[count, 2*j+1] = 2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*-np.sin(theta[j])/ safety_b**2 + 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.cos(theta[j])/ safety_a**2
 
                 b[count] = barrier_gain * h**3
+                # b[count+1] = barrier_gain * h**3
                 count += 1
-
+            
+        print(f"Elliptical CBF; Agent#{agent_index} has {count} collision pairs.")
         # Threshold control inputs before QP
         norm = np.linalg.norm(dxi[:,agent_index], 2)
         # idxs_to_normalize = (norms > magnitude_limit)
@@ -225,7 +235,6 @@ def create_single_integrator_barrier_certificate_ellipse_decentralized(agent_ind
 
         f = -2*np.reshape(dxi[:,agent_index], 2, order='F')
         result = qp(H, matrix(f), matrix(A), matrix(b))['x']
-
         return np.reshape(result, (2, -1), order='F')
 
     return f
