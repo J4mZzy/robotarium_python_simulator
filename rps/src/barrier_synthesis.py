@@ -9,16 +9,11 @@ from matplotlib.patches import Ellipse
 import matplotlib.pyplot as plt
 import time
 
-# # Instantiate Robotarium object
-# N = 4
-
-# r = robotarium.Robotarium(number_of_robots=N, show_figure=True, sim_in_real_time=True, initial_conditions=np.array([[0.4,0.4,-0.4,-0.4],[0.4,-0.4,-0.4,0.4],[-np.pi*3/4,np.pi*3/4,np.pi/4,-np.pi/4]]))
-# for riangle: np.array([[-0.2*np.sqrt(3),0.2*np.sqrt(3),0],[-0.2,-0.2,0.4],[np.pi/6,np.pi/18*15,-np.pi/2]])
 
 # The robots will never reach their goal points so set iteration number (not used here)
 iterations = 600
 
-## The areana is bounded between x \in (-1.6,1.6) y\in (-1,1) 
+## The areana is bounded between x \in (-1.6,1.6)  y\in (-1,1) 
 
 # Define goal points outside of the arena
 # goal_points = np.array(np.array([[-0.4,-0.4,0.4,0.4],[-0.4,0.4,0.4,-0.4],[-np.pi*3/4,np.pi*3/4,np.pi/4,-np.pi/4]]))  # go straight for each
@@ -60,12 +55,12 @@ for i in range(N//2):
 
 # Plotting Parameters
 
-##GT color scheme
-# Gold = np.array([179,163,105])/255
-# Navy = np.array([0,48,87])/255
-# piMile= np.array([214,219,212])/255
-# Black = np.array([0,0,0])
-# CM = np.vstack([Gold,Navy,piMile,Black])
+#GT color scheme
+Gold = np.array([179,163,105])/255
+Navy = np.array([0,48,87])/255
+piMile= np.array([214,219,212])/255
+Black = np.array([0,0,0])
+CM = np.vstack([Gold,Navy,piMile,Black])
 
 
 # CM = np.random.rand(N,3) # Random Colors
@@ -78,11 +73,11 @@ CM = cmap(np.linspace(0, 1, N))  # Generate N colors evenly spaced within the co
 
 ################for Robotarium#######################
 # Set CM to be all black for N agents
-CM = np.array([[0, 0, 0]] * N)
+# CM = np.array([[0, 0, 0]] * N)
  
 
 # Default Barrier Parameters
-safety_radius = 0.12
+safety_radius = 0.15
 
 safety_radius_marker_size = determine_marker_size(r,safety_radius) # Will scale the plotted markers to be the diameter of provided argument (in meters)
 font_height_meters = 0.2
@@ -101,7 +96,7 @@ si_position_controller = create_si_position_controller()
 
 # Initialize parameters
 radius = 0.20
-a = 0.25
+a = 0.22
 b = 0.20
 
 si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=100,safety_radius=radius)
@@ -112,12 +107,6 @@ prev_CBF_shape = 1 # initialize the shape flag as 1 (1 is circle and 2 is ellips
 transition_in_progress = False
 start_time = None
 transition_duration = 0.5  # Duration for the morphing transition in seconds
-
-###############################################################################
-## TODO: add a decentrailzed implementation here
-## Each agent will treat the other agents as barriers  
-
-###############################################################################
 
 # Create SI to UNI dynamics tranformation
 si_to_uni_dyn, uni_to_si_states = create_si_to_uni_mapping()
@@ -182,7 +171,7 @@ while(1):
         dxi_cir = si_barrier_cert_cir(dxi, x_si)
         # dxi_cir = si_barrier_cert_ellip(dxi, x_si,thetas)
         dxi_ellip = si_barrier_cert_ellip(dxi, x_si,thetas)
-        # dxi_ellip = si_barrier_cert_cir(dxi, x_si)
+        # dxi_ellip = si_barrier_cert_cir(dxi, x_si) 
 
         ############### progress? ######################
 
