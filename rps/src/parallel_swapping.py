@@ -185,8 +185,8 @@ while(1):
         dxi = si_position_controller(x_si,goal_points[:2,:])
 
         # Use the barrier certificates to make sure that the agents don't collide
-        # dxi_cir = si_barrier_cert_cir(dxi, x_si)
-        dxi_cir = si_barrier_cert_ellip(dxi, x_si,thetas)
+        dxi_cir = si_barrier_cert_cir(dxi, x_si)
+        # dxi_cir = si_barrier_cert_ellip(dxi, x_si,thetas)
         dxi_ellip = si_barrier_cert_ellip(dxi, x_si,thetas)
         # dxi_ellip = si_barrier_cert_cir(dxi, x_si) 
 
