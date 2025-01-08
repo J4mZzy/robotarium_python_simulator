@@ -55,12 +55,12 @@ for i in range(N//2):
 
 # Plotting Parameters
 
-#GT color scheme
-Gold = np.array([179,163,105])/255
-Navy = np.array([0,48,87])/255
-piMile= np.array([214,219,212])/255
-Black = np.array([0,0,0])
-CM = np.vstack([Gold,Navy,piMile,Black])
+# #GT color scheme
+# Gold = np.array([179,163,105])/255
+# Navy = np.array([0,48,87])/255
+# piMile= np.array([214,219,212])/255
+# Black = np.array([0,0,0])
+# CM = np.vstack([Gold,Navy,piMile,Black])
 
 
 # CM = np.random.rand(N,3) # Random Colors
@@ -100,7 +100,7 @@ a = 0.22
 b = 0.20
 
 si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=100,safety_radius=radius)
-si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a,safety_b=b)
+si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=100,safety_a=a,safety_b=b)
 prev_CBF_shape = 1 # initialize the shape flag as 1 (1 is circle and 2 is ellipse)
 
 # Initialize the transition variables
@@ -174,10 +174,6 @@ while(1):
         # dxi_ellip = si_barrier_cert_cir(dxi, x_si) 
 
         ############### progress? ######################
-
-
-        ###############################################################################
-        ## TODO: add a decentrailzed implementation here
 
         ###############################################################################
 
