@@ -21,7 +21,7 @@ iterations = 600
 # This portion of the code generates points on a circle enscribed in a 6x6 square
 # that's centered on the origin.  The robots switch positions on the circle.
 # Define the radius of the circle for robot initial positions
-N = 10 # 2,4,8,16,20
+N = 16 # 2,4,8,16,20
 circle_radius = 0.8
 
 rect_width = 2.0  # Width of the rectangle
@@ -31,19 +31,60 @@ rect_height = 1.6  # Height of the rectangle
 initial_x = np.zeros(N)
 initial_y = np.zeros(N)
 initial_heading = np.zeros(N)
-spacing = rect_height / (N // 2 - 1)  # Vertical spacing between robots on each side
+# spacing = rect_height / (N // 2 - 1)  # Vertical spacing between robots on each side
 
-# Left side (robots facing right)
-for i in range(N // 2):
-    initial_x[i] = -rect_width / 2  # Left side x-coordinate
-    initial_y[i] = rect_height / 2 - i * spacing  # Distribute vertically
-    initial_heading[i] = 0  # Facing right
 
-# Right side (robots facing left)
-for i in range(N // 2, N):
-    initial_x[i] = rect_width / 2  # Right side x-coordinate
-    initial_y[i] = rect_height / 2 - (i - N // 2) * spacing  # Distribute vertically
-    initial_heading[i] = np.pi  # Facing left
+if N == 2:
+    # For the two-robot case
+    initial_x[0] = -rect_width / 2  # Left side x-coordinate
+    initial_y[0] = 0  # Centered vertically
+    initial_heading[0] = 0  # Facing right
+
+    initial_x[1] = rect_width / 2  # Right side x-coordinate
+    initial_y[1] = 0  # Centered vertically
+    initial_heading[1] = np.pi  # Facing left
+elif N in [16, 20]:
+    # For two columns on each side
+    spacing_x = rect_width / 4  # Horizontal spacing between columns
+    spacing_y = rect_height / (N // 4 - 1)  # Vertical spacing between robots in each column
+
+    # Left side (robots facing right)
+    for i in range(N // 4):
+        initial_x[i] = -rect_width / 2  # Left column x-coordinate
+        initial_y[i] = rect_height / 2 - i * spacing_y  # Distribute vertically
+        initial_heading[i] = 0  # Facing right
+
+        j = i + N // 4
+        initial_x[j] = -rect_width / 2 + spacing_x  # Right column x-coordinate (on the left side)
+        initial_y[j] = rect_height / 2 - i * spacing_y  # Same vertical position
+        initial_heading[j] = 0  # Facing right
+
+    # Right side (robots facing left)
+    for i in range(N // 4):
+        k = i + N // 2
+        initial_x[k] = rect_width / 2  # Left column x-coordinate (on the right side)
+        initial_y[k] = rect_height / 2 - i * spacing_y  # Distribute vertically
+        initial_heading[k] = np.pi  # Facing left
+
+        l = k + N // 4
+        initial_x[l] = rect_width / 2 - spacing_x  # Right column x-coordinate (on the right side)
+        initial_y[l] = rect_height / 2 - i * spacing_y  # Same vertical position
+        initial_heading[l] = np.pi  # Facing left
+else:
+    # Single column logic for N = 8
+    spacing = rect_height / (N // 2 - 1)  # Vertical spacing between robots on each side
+
+    # Left side (robots facing right)
+    for i in range(N // 2):
+        initial_x[i] = -rect_width / 2  # Left side x-coordinate
+        initial_y[i] = rect_height / 2 - i * spacing  # Distribute vertically
+        initial_heading[i] = 0  # Facing right
+
+    # Right side (robots facing left)
+    for i in range(N // 2, N):
+        initial_x[i] = rect_width / 2  # Right side x-coordinate
+        initial_y[i] = rect_height / 2 - (i - N // 2) * spacing  # Distribute vertically
+        initial_heading[i] = np.pi  # Facing left
 
 # Combine initial positions into the required format (x, y, theta)
 initial_conditions = np.array([initial_x, initial_y, initial_heading])
@@ -112,11 +153,11 @@ si_position_controller = create_si_position_controller()
 
 # Initialize parameters
 radius = 0.20
-a = 0.22
+a = 0.25
 b = 0.20
 
-si_barrier_cert_cir = create_single_integrator_barrier_certificate_with_boundary(barrier_gain=100,safety_radius=radius)
-si_barrier_cert_ellip = create_single_integrator_barrier_certificate_with_boundary_ellipse(barrier_gain=10,safety_a=a,safety_b=b,)
+si_barrier_cert_cir = create_single_integrator_barrier_certificate_with_boundary(barrier_gain=1000,safety_radius=radius)
+si_barrier_cert_ellip = create_single_integrator_barrier_certificate_with_boundary_ellipse(barrier_gain=10,safety_a=a,safety_b=b)
 prev_CBF_shape = 1 # initialize the shape flag as 1 (1 is circle and 2 is ellipse)
 
 # Initialize the transition variables

@@ -100,13 +100,13 @@ a = 0.22
 b = 0.20
 
 si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=100,safety_radius=radius)
-si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=100,safety_a=a,safety_b=b)
+si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=10,safety_a=a,safety_b=b)
 prev_CBF_shape = 1 # initialize the shape flag as 1 (1 is circle and 2 is ellipse)
 
 # Initialize the transition variables
 transition_in_progress = False
 start_time = None
-transition_duration = 0.5  # Duration for the morphing transition in seconds
+transition_duration = 2  # Duration for the morphing transition in seconds
 
 # Create SI to UNI dynamics tranformation
 si_to_uni_dyn, uni_to_si_states = create_si_to_uni_mapping()
@@ -120,16 +120,18 @@ L = 0.05
 
 # Create Goal Point Markers
 goal_marker_size_m = 0.1
-font_size = determine_font_size(r,0.05)
-line_width = 3
+font_size = determine_font_size(r,0.1)
+line_width = 5
 
 marker_size_goal = determine_marker_size(r,goal_marker_size_m)
 
 #Text with goal identification
 goal_caption = ['G{0}'.format(ii) for ii in range(goal_points.shape[1])]
+
 #Arrow for desired orientation
-goal_orientation_arrows = [r.axes.arrow(goal_points[0,ii], goal_points[1,ii], goal_marker_size_m*np.cos(goal_points[2,ii]), goal_marker_size_m*np.sin(goal_points[2,ii]), width = 0.01, length_includes_head=True, color = CM[ii,:], zorder=-2)
-for ii in range(goal_points.shape[1])]
+# goal_orientation_arrows = [r.axes.arrow(goal_points[0,ii], goal_points[1,ii], goal_marker_size_m*np.cos(goal_points[2,ii]), goal_marker_size_m*np.sin(goal_points[2,ii]), width = 0.01, length_includes_head=True, color = CM[ii,:], zorder=-2)
+# for ii in range(goal_points.shape[1])]
+
 #Plot text for caption
 goal_points_text = [r.axes.text(goal_points[0,ii], goal_points[1,ii], goal_caption[ii], fontsize=font_size, color='k',fontweight='bold',horizontalalignment='center',verticalalignment='center',zorder=-3)
 for ii in range(goal_points.shape[1])]
@@ -270,26 +272,26 @@ r.call_at_scripts_end()
 
 ## plot block
 
-# Plotting the position trajectories
-print("Preparing to plot trajectories...")
-# Set the font globally to Times New Roman
-plt.rcParams['font.family'] = 'Times New Roman'
-plt.figure(figsize=(10, 10))
-for i in range(N):
-    trajectory = np.array(trajectories[i])
-    plt.plot(trajectory[:, 0], trajectory[:, 1], label=f'Robot {i + 1}', color=CM[i],linewidth=3)
+# # Plotting the position trajectories
+# print("Preparing to plot trajectories...")
+# # Set the font globally to Times New Roman
+# plt.rcParams['font.family'] = 'Times New Roman'
+# plt.figure(figsize=(10, 10))
+# for i in range(N):
+#     trajectory = np.array(trajectories[i])
+#     plt.plot(trajectory[:, 0], trajectory[:, 1], label=f'Robot {i + 1}', color=CM[i],linewidth=3)
 
-plt.scatter(goal_points[0, :], goal_points[1, :], color=CM, marker='*', s=200, label='Goals',linewidth=3)
-# Increase font sizes for title, labels, and legend
-# plt.title('Robot Trajectories', fontsize=40)
-plt.xlabel('X Position', fontsize=36)
-plt.ylabel('Y Position', fontsize=36)
-plt.xticks(fontsize=32)  # Font size for x-axis ticks
-plt.yticks(fontsize=32)  # Font size for y-axis ticks
+# plt.scatter(goal_points[0, :], goal_points[1, :], color=CM, marker='*', s=200, label='Goals',linewidth=3)
+# # Increase font sizes for title, labels, and legend
+# # plt.title('Robot Trajectories', fontsize=40)
+# plt.xlabel('X Position', fontsize=36)
+# plt.ylabel('Y Position', fontsize=36)
+# plt.xticks(fontsize=32)  # Font size for x-axis ticks
+# plt.yticks(fontsize=32)  # Font size for y-axis ticks
 
-# Adjust legend positioning to fit well within the plot
-# legend = plt.legend(fontsize=12, loc='upper left') 
-# legend.set_draggable(True)  # Make the legend draggable
+# # Adjust legend positioning to fit well within the plot
+# # legend = plt.legend(fontsize=12, loc='upper left') 
+# # legend.set_draggable(True)  # Make the legend draggable
 
-plt.show(block=True)  # Keep the plot window open
-print("Plotting complete.")
+# plt.show(block=True)  # Keep the plot window open
+# print("Plotting complete.")
