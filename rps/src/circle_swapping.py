@@ -21,8 +21,8 @@ iterations = 600
 # This portion of the code generates points on a circle enscribed in a 6x6 square
 # that's centered on the origin.  The robots switch positions on the circle.
 # Define the radius of the circle for robot initial positions
-N = 10 # 2,4,8,16,20
-circle_radius = 0.8
+N = 8 # 2,4,8,11,16,20
+circle_radius = 0.9
 
 # Calculate initial positions in a circular formation
 theta = np.linspace(0, 2 * np.pi, N, endpoint=False)  # Angles for each robot
@@ -52,6 +52,12 @@ for i in range(N//2):
     goal_points[0, opposite_idx] = temp_x  # Assign temp values to opposite robot
     goal_points[1, opposite_idx] = temp_y
     goal_points[2, opposite_idx] = temp_theta
+
+
+
+###################TODO: code the 11 case####################################
+
+#############################################################################
 
 # Plotting Parameters
 
@@ -96,17 +102,19 @@ si_position_controller = create_si_position_controller()
 
 # Initialize parameters
 radius = 0.20
-a = 0.22
+a = 0.24
 b = 0.20
 
-si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=100,safety_radius=radius)
-si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=10,safety_a=a,safety_b=b)
+si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=10,safety_radius=radius)
+si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=0.1,safety_a=a,safety_b=b)
+######## remember to change this to 2 when running ellipse ######################
 prev_CBF_shape = 1 # initialize the shape flag as 1 (1 is circle and 2 is ellipse)
 
 # Initialize the transition variables
 transition_in_progress = False
 start_time = None
-transition_duration = 2  # Duration for the morphing transition in seconds
+transition_duration = 1  # Duration for the morphing transition in seconds
+exp_start_time = time.time()
 
 # Create SI to UNI dynamics tranformation
 si_to_uni_dyn, uni_to_si_states = create_si_to_uni_mapping()
@@ -138,8 +146,8 @@ for ii in range(goal_points.shape[1])]
 goal_markers = [r.axes.scatter(goal_points[0,ii], goal_points[1,ii], s=marker_size_goal, marker='s', facecolors='none',edgecolors=CM[ii,:],linewidth=line_width,zorder=-3)
 for ii in range(goal_points.shape[1])]
 
-
 r.step()
+# r.step_no_error()
 
 
 # Initialize a list to keep track of the scatter objects
@@ -169,6 +177,7 @@ while(1):
         # Use a position controller to drive to the goal position
         dxi = si_position_controller(x_si,goal_points[:2,:])
 
+        ########################### barrier type ######################################
         # Use the barrier certificates to make sure that the agents don't collide
         dxi_cir = si_barrier_cert_cir(dxi, x_si)
         # dxi_cir = si_barrier_cert_ellip(dxi, x_si,thetas)
@@ -189,12 +198,14 @@ while(1):
 
         if not transition_in_progress:
             # for smooth transitions
-            if norm_dxi_cir >= norm_dxi_ellip:
+            if norm_dxi_cir > norm_dxi_ellip:
                 max_norm = norm_dxi_cir # keep the circle
                 current_CBF_shape = 1  # Circle
-            else:
+            elif norm_dxi_cir < norm_dxi_ellip:
                 max_norm = max(norm_dxi_cir,norm_dxi_ellip)
                 current_CBF_shape = 2  # Ellipse
+            elif norm_dxi_cir == norm_dxi_ellip:
+                current_CBF_shape = prev_CBF_shape   # keep the shape
         
         # Check if the shape has changed
         if current_CBF_shape != prev_CBF_shape and not transition_in_progress:
@@ -211,12 +222,12 @@ while(1):
             if current_CBF_shape == 1:
                 # Morph from ellipse to circle
                 dxu = dxu_cir
-                a = (1 - alpha) * 0.20 + alpha * 0.15  # Interpolate ellipse width to circle radius
+                a = (1 - alpha) * 0.18 + alpha * 0.15  # Interpolate ellipse width to circle radius
                 b = 0.15  # Keep b constant, or you can interpolate if needed
             elif current_CBF_shape == 2:
                 # Morph from circle to ellipse
                 dxu = dxu_ellip
-                a = (1 - alpha) * 0.15 + alpha * 0.20  # Interpolate circle radius to ellipse width
+                a = (1 - alpha) * 0.15 + alpha * 0.18  # Interpolate circle radius to ellipse width
                 b = 0.15  # Keep b constant, or adjust if you want the height to morph too
 
             # If the transition is complete, stop the morphing
@@ -230,7 +241,7 @@ while(1):
 
             elif current_CBF_shape == 2:
                 dxu = dxu_ellip
-                a = 0.20
+                a = 0.18
                 b = 0.15
         # Remove previous scatter plot markers
         for g in g_objects:
@@ -260,38 +271,45 @@ while(1):
         r.set_velocities(np.arange(N), dxu)
 
         # Stopping cirterion 
-        if(np.linalg.norm(goal_points[:2,:] - x_si) < 0.02):
+        if(np.linalg.norm(goal_points[:2,:] - x_si) < 0.08):
             break
 
         # Iterate the simulation
         r.step()
+        # r.step_no_error()
 
 #Call at end of script to print debug information and for your script to run on the Robotarium server properly
 r.call_at_scripts_end()
 
 
-## plot block
+#Save Data
+print(time.time() - exp_start_time)
 
-# # Plotting the position trajectories
-# print("Preparing to plot trajectories...")
-# # Set the font globally to Times New Roman
-# plt.rcParams['font.family'] = 'Times New Roman'
-# plt.figure(figsize=(10, 10))
-# for i in range(N):
-#     trajectory = np.array(trajectories[i])
-#     plt.plot(trajectory[:, 0], trajectory[:, 1], label=f'Robot {i + 1}', color=CM[i],linewidth=3)
+# plot block
 
-# plt.scatter(goal_points[0, :], goal_points[1, :], color=CM, marker='*', s=200, label='Goals',linewidth=3)
-# # Increase font sizes for title, labels, and legend
-# # plt.title('Robot Trajectories', fontsize=40)
-# plt.xlabel('X Position', fontsize=36)
-# plt.ylabel('Y Position', fontsize=36)
-# plt.xticks(fontsize=32)  # Font size for x-axis ticks
-# plt.yticks(fontsize=32)  # Font size for y-axis ticks
+# Plotting the position trajectories
+print("Preparing to plot trajectories...")
+# Set the font globally to Times New Roman
+plt.rcParams['font.family'] = 'Times New Roman'
+# Enable LaTeX plotting
+plt.rc('text', usetex=True)
 
-# # Adjust legend positioning to fit well within the plot
-# # legend = plt.legend(fontsize=12, loc='upper left') 
-# # legend.set_draggable(True)  # Make the legend draggable
+plt.figure(figsize=(10, 8))
+for i in range(N):
+    trajectory = np.array(trajectories[i])
+    plt.plot(trajectory[:, 0], trajectory[:, 1], label=f'Robot {i + 1}', color=CM[i],linewidth=3)
 
-# plt.show(block=True)  # Keep the plot window open
-# print("Plotting complete.")
+plt.scatter(goal_points[0, :], goal_points[1, :], color=CM, marker='*', s=200, label='Goals',linewidth=3)
+# Increase font sizes for title, labels, and legend
+# plt.title('Robot Trajectories', fontsize=40)
+plt.xlabel('$$x (m)$$', fontsize=24)
+plt.ylabel('$$y (m)$$', fontsize=24)
+plt.xticks(fontsize=18)  # Font size for x-axis ticks
+plt.yticks(fontsize=18)  # Font size for y-axis ticks
+
+# Adjust legend positioning to fit well within the plot
+# legend = plt.legend(fontsize=12, loc='upper left') 
+# legend.set_draggable(True)  # Make the legend draggable
+# plt.savefig("plot.png", dpi=300)
+plt.show(block=True)  # Keep the plot window open
+print("Plotting complete.")
