@@ -21,7 +21,7 @@ iterations = 600
 # This portion of the code generates points on a circle enscribed in a 6x6 square
 # that's centered on the origin.  The robots switch positions on the circle.
 # Define the radius of the circle for robot initial positions
-N = 2 # 2,4,8,16,20
+N = 8 # 2,4,8,16,20
 
 rect_width = 1.6  # Width of the rectangle
 rect_height = 1.2  # Height of the rectangle
@@ -42,7 +42,7 @@ if N == 2:
     initial_x[1] = rect_width / 2  # Right side x-coordinate
     initial_y[1] = 0  # Centered vertically
     initial_heading[1] = np.pi  # Facing left
-elif N in [16, 20]:
+elif N>=10 and np.mod(N,2)==0:
     # For two columns on each side
     spacing_x = rect_width / 4  # Horizontal spacing between columns
     spacing_y = rect_height / (N // 4 - 1)  # Vertical spacing between robots in each column
@@ -69,8 +69,8 @@ elif N in [16, 20]:
         initial_x[l] = rect_width / 2 - spacing_x  # Right column x-coordinate (on the right side)
         initial_y[l] = rect_height / 2 - i * spacing_y  # Same vertical position
         initial_heading[l] = np.pi  # Facing left
-else:
-    # Single column logic for N = 8
+elif  N<=10 and np.mod(N,2)==0:
+    # Single column logic for N = 4,8
     spacing = rect_height / (N // 2 - 1)  # Vertical spacing between robots on each side
 
     # Left side (robots facing right)
@@ -84,11 +84,25 @@ else:
         initial_x[i] = rect_width / 2  # Right side x-coordinate
         initial_y[i] = rect_height / 2 - (i - N // 2) * spacing  # Distribute vertically
         initial_heading[i] = np.pi  # Facing left
+elif np.mod(N, 2) != 0:
+    # Define vertical spacing for each side (left and right columns)
+    left_column_robots = N // 2 + 1  # Left column gets one more robot if N is odd
+    right_column_robots = N // 2  # Right column
 
-
-###################TODO: code the 11 case####################################
-
-#############################################################################
+    spacing_left = rect_height / left_column_robots*1.2  # Vertical spacing for left column
+    spacing_right = rect_height / right_column_robots*1.2   # Vertical spacing for right column
+    # Staggered left-right distribution
+    for i in range(N):
+        if i % 2 == 0:  # Even index: Left column
+            initial_x[i] = -rect_width / 2  # Left side x-coordinate
+            initial_heading[i] = 0  # Facing right
+            # Place robots in left column with even spacing
+            initial_y[i] = rect_height / 2 - (i // 2) * spacing_left
+        else:  # Odd index: Right column
+            initial_x[i] = rect_width / 2  # Right side x-coordinate
+            initial_heading[i] = np.pi  # Facing left
+            # Place robots in right column with even spacing
+            initial_y[i] = rect_height / 2 - ((i - 1) // 2) * spacing_right
 
 
 # Combine initial positions into the required format (x, y, theta)
@@ -99,21 +113,22 @@ r = robotarium.Robotarium(number_of_robots=N, show_figure=True, sim_in_real_time
 
 # Define goal points for swapping behavior
 goal_points = np.array([initial_x, initial_y, initial_heading])  # Start by setting goal points to current positions
+goal_points[0, :] = -initial_conditions[0,:] 
+# goal_points[1, :] = -initial_conditions[1,:]
+# # Swap positions with robots on the opposite side
+# for i in range(N // 2):
+#     opposite_idx = i + N // 2  # Index of the opposite robot on the other side
 
-# Swap positions with robots on the opposite side
-for i in range(N // 2):
-    opposite_idx = i + N // 2  # Index of the opposite robot on the other side
-
-    # Store positions in a temporary variable to avoid overwriting
-    temp_x, temp_y, temp_theta = goal_points[:, i]
+#     # Store positions in a temporary variable to avoid overwriting
+#     temp_x, temp_y, temp_theta = goal_points[:, i]
     
-    goal_points[0, i] = goal_points[0, opposite_idx]  # Swap x
-    goal_points[1, i] = goal_points[1, opposite_idx]  # Swap y
-    goal_points[2, i] = np.pi+goal_points[2, opposite_idx]  # Swap theta
+#     goal_points[0, i] = goal_points[0, opposite_idx]  # Swap x
+#     goal_points[1, i] = goal_points[1, opposite_idx]  # Swap y
+#     goal_points[2, i] = np.pi+goal_points[2, opposite_idx]  # Swap theta
     
-    goal_points[0, opposite_idx] = temp_x  # Assign temp values to opposite robot
-    goal_points[1, opposite_idx] = temp_y
-    goal_points[2, opposite_idx] = np.pi+temp_theta
+#     goal_points[0, opposite_idx] = temp_x  # Assign temp values to opposite robot
+#     goal_points[1, opposite_idx] = temp_y
+#     goal_points[2, opposite_idx] = np.pi+temp_theta
 
 # Plotting Parameters
 
@@ -192,8 +207,8 @@ marker_size_goal = determine_marker_size(r,goal_marker_size_m)
 #Text with goal identification
 goal_caption = ['G{0}'.format(ii) for ii in range(goal_points.shape[1])]
 #Arrow for desired orientation
-goal_orientation_arrows = [r.axes.arrow(goal_points[0,ii], goal_points[1,ii], goal_marker_size_m*np.cos(goal_points[2,ii]), goal_marker_size_m*np.sin(goal_points[2,ii]), width = 0.01, length_includes_head=True, color = CM[ii,:], zorder=-2)
-for ii in range(goal_points.shape[1])]
+# goal_orientation_arrows = [r.axes.arrow(goal_points[0,ii], goal_points[1,ii], goal_marker_size_m*np.cos(goal_points[2,ii]), goal_marker_size_m*np.sin(goal_points[2,ii]), width = 0.01, length_includes_head=True, color = CM[ii,:], zorder=-2)
+# for ii in range(goal_points.shape[1])]
 #Plot text for caption
 goal_points_text = [r.axes.text(goal_points[0,ii], goal_points[1,ii], goal_caption[ii], fontsize=font_size, color='k',fontweight='bold',horizontalalignment='center',verticalalignment='center',zorder=-3)
 for ii in range(goal_points.shape[1])]
@@ -328,7 +343,7 @@ while(1):
         r.set_velocities(np.arange(N), dxu)
 
         # Stopping cirterion 
-        if(np.linalg.norm(goal_points[:2,:] - x_si) < 0.08):
+        if(np.linalg.norm(goal_points[:2,:] - x_si) < 0.1):
             break
 
         # Iterate the simulation
