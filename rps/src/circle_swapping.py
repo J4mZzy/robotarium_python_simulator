@@ -21,7 +21,7 @@ iterations = 600
 # This portion of the code generates points on a circle enscribed in a 6x6 square
 # that's centered on the origin.  The robots switch positions on the circle.
 # Define the radius of the circle for robot initial positions
-N = 20 # 2,4,8,11,16,20
+N = 4 # 2,4,8,11,16,20
 circle_radius = 0.9
 
 # Calculate initial positions in a circular formation
@@ -56,13 +56,6 @@ goal_points = np.array([initial_x, initial_y, theta])  # Start by setting goal p
 
 goal_points[0, :] = -initial_conditions[0,:] 
 goal_points[1, :] = -initial_conditions[1,:]
-
-
-###################TODO: code the 11 case####################################
-# if N==11:
-#     goal_points[0, :] = -initial_conditions[0,:] 
-#     goal_points[1, :] = -initial_conditions[1,:]
-#############################################################################
 
 # Plotting Parameters
 
@@ -161,6 +154,10 @@ g_objects = []
 # Initialize a list to keep track of the robots' trajectories
 trajectories = {i: [] for i in range(N)}
 
+# Initialize empty lists to store norm values
+norm_dxi_cir_list = []
+norm_dxi_ellip_list = []
+
 # While the goal is not reached
 while(1):
     # for i in range(iterations):
@@ -200,6 +197,11 @@ while(1):
 
         norm_dxi_cir = np.linalg.norm(dxi_cir,ord=2)
         norm_dxi_ellip = np.linalg.norm(dxi_ellip,ord=2)
+
+        # Append the norms to the lists
+        norm_dxi_cir_list.append(norm_dxi_cir)
+        norm_dxi_ellip_list.append(norm_dxi_ellip)
+
 
         if not transition_in_progress:
             # for smooth transitions
@@ -287,34 +289,46 @@ while(1):
 r.call_at_scripts_end()
 
 
+# Convert lists to a single 2D NumPy array
+u_norms_array = np.column_stack((norm_dxi_cir_list, norm_dxi_ellip_list))
+
 #Save Data
 print(time.time() - exp_start_time)
+np.save('trajectories', trajectories)
+np.save("u_norms", u_norms_array)
 
 # plot block
 
-# Plotting the position trajectories
-print("Preparing to plot trajectories...")
-# Set the font globally to Times New Roman
-plt.rcParams['font.family'] = 'Times New Roman'
-# Enable LaTeX plotting
-plt.rc('text', usetex=True)
+# # Plotting the position trajectories
+# print("Preparing to plot trajectories...")
+# # Set the font globally to Times New Roman
+# plt.rcParams['font.family'] = 'Times New Roman'
+# # Enable LaTeX plotting
+# plt.rc('text', usetex=True)
 
-plt.figure(figsize=(10, 8))
-for i in range(N):
-    trajectory = np.array(trajectories[i])
-    plt.plot(trajectory[:, 0], trajectory[:, 1], label=f'Robot {i + 1}', color=CM[i],linewidth=3)
+# plt.figure(figsize=(8, 8))
+# for i in range(N):
+#     trajectory = np.array(trajectories[i])
+#     plt.plot(trajectory[:, 0], trajectory[:, 1], label=f'Robot {i + 1}', color=CM[i],linewidth=3)
 
-plt.scatter(goal_points[0, :], goal_points[1, :], color=CM, marker='*', s=200, label='Goals',linewidth=3)
-# Increase font sizes for title, labels, and legend
-# plt.title('Robot Trajectories', fontsize=40)
-plt.xlabel('$$x (m)$$', fontsize=24)
-plt.ylabel('$$y (m)$$', fontsize=24)
-plt.xticks(fontsize=18)  # Font size for x-axis ticks
-plt.yticks(fontsize=18)  # Font size for y-axis ticks
+# plt.scatter(goal_points[0, :], goal_points[1, :], color=CM, marker='*', s=200, label='Goals',linewidth=3)
 
-# Adjust legend positioning to fit well within the plot
-# legend = plt.legend(fontsize=12, loc='upper left') 
-# legend.set_draggable(True)  # Make the legend draggable
-# plt.savefig("plot.png", dpi=300)
-plt.show(block=True)  # Keep the plot window open
-print("Plotting complete.")
+# # Add 10 cm (0.1 m) dashed circles around each goal point
+# for i in range(goal_points.shape[1]):  # Loop over goal points
+#     circle = plt.Circle((goal_points[0, i], goal_points[1, i]), 0.1, color=CM[i], fill=False, linestyle='dashed', linewidth=3)
+#     plt.gca().add_patch(circle)  # Add the circle to the plot
+
+# # Increase font sizes for title, labels, and legend
+# # plt.title('Robot Trajectories', fontsize=40)
+# plt.xlabel('$$x (m)$$', fontsize=24)
+# plt.ylabel('$$y (m)$$', fontsize=24)
+# plt.xticks(fontsize=18)  # Font size for x-axis ticks
+# plt.yticks(fontsize=18)  # Font size for y-axis ticks
+
+# # Adjust legend positioning to fit well within the plot
+# # legend = plt.legend(fontsize=12, loc='upper left') 
+# # legend.set_draggable(True)  # Make the legend draggable
+# plt.savefig("plot.png", dpi=600)
+# # plt.show(block=True)  # Keep the plot window open
+# print("Plotting complete.")
+
