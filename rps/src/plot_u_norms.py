@@ -7,6 +7,7 @@ norms = np.load("u_norms.npy")
 # Extract the circular and elliptical norms
 norm_dxi_cir = norms[:, 0]  # First column
 norm_dxi_ellip = norms[:, 1]  # Second column
+norm_varying = np.max(np.array([norm_dxi_cir, norm_dxi_ellip]), axis=0)
 
 # Generate time indices (assuming sequential iterations)
 iterations = np.arange(len(norm_dxi_cir))
@@ -16,27 +17,41 @@ plt.rcParams['font.family'] = 'Times New Roman'
 plt.rcParams['text.usetex'] = True  # Enable LaTeX rendering
 
 # Create figure with larger size
-plt.figure(figsize=(8, 5))
+plt.figure(figsize=(8, 5.5))
 
 # Plot with different line styles and thickness
-plt.plot(iterations, norm_dxi_cir, label="Circular Barrier Function $\Vert u\Vert$", 
-         linestyle='-', linewidth=5, color='b')
+plt.plot(iterations, norm_dxi_cir, label=r"\textbf{Circular CBF} $\mathbf{\Vert u\Vert}$", 
+         linestyle='dashed', linewidth=3, color='b')
 
-plt.plot(iterations, norm_dxi_ellip, label="Elliptical Barrier Function $\Vert u\Vert$", 
-         linestyle='--', linewidth=5, color='r')
+plt.plot(iterations, norm_dxi_ellip, label=r"\textbf{Elliptical CBF} $\mathbf{\Vert u\Vert}$", 
+         linestyle=':', linewidth=3, color='r')
+
+plt.plot(iterations, norm_varying, label=r"\textbf{Time-Varying CBF} $\mathbf{\Vert u\Vert}$", 
+         linestyle='solid', linewidth=4.5, color='purple', alpha=0.5)
+
 # Labels with increased font size
-plt.xlabel(r"Time step", fontsize=20)
-plt.ylabel(r"$\Vert u\Vert$ $(m/s)$", fontsize=20)
+plt.xlabel(r"\textbf{Time step}", fontsize=22)
+plt.ylabel(r"$\mathbf{\Vert u\Vert}$ $(m/s)$", fontsize=22)
 
-# Improve grid aesthetics
-plt.grid(True, linestyle='--', linewidth=0.7, alpha=0.7)
+# Adjust y-axis limits for better differentiation
+plt.ylim(0, max(norm_varying) * 1.2)  # Increase range for more contrast
+
+# Improve grid aesthetics (make it subtle)
+# plt.grid(True, linestyle='--', linewidth=0.6, alpha=0.6)
 
 # Improve legend placement and style
-plt.legend(fontsize=12, loc="lower right", frameon=True, edgecolor='black')
+# plt.legend(fontsize=12, loc="upper left", bbox_to_anchor=(1.02, 1),
+#            frameon=True, edgecolor='black', framealpha=1)
+plt.legend(fontsize=20,edgecolor = 'black')
+plt.legend().set_picker(True)  # Allows clicking to move the legend
+
 
 # Adjust axis ticks for better readability
-plt.xticks(fontsize=12)
-plt.yticks(fontsize=12)
+plt.xticks(fontsize=16)
+plt.yticks(fontsize=16)
+
+# Adjust layout for legend
+plt.tight_layout()
 
 # Display the plot
 plt.show()

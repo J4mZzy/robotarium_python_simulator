@@ -374,7 +374,7 @@ def create_single_integrator_barrier_certificate_diamond(barrier_gain=100, safet
 
     return f
 
-def create_single_integrator_barrier_certificate_with_boundary(barrier_gain=100, safety_radius=0.17, magnitude_limit=0.2, boundary_points = np.array([-1.6, 1.6, -1.0, 1.0])):
+def create_single_integrator_barrier_certificate_with_boundary(barrier_gain=100, safety_radius=0.17, magnitude_limit=0.2, boundary_points = np.array([-1.6, 1.6, -1.2, 1.2])):
     """Creates a barrier certificate for a single-integrator system with a rectangular boundary included.  This function
     returns another function for optimization reasons.
 
@@ -430,27 +430,28 @@ def create_single_integrator_barrier_certificate_with_boundary(barrier_gain=100,
                 count += 1
         
         for k in range(N):
+            boundary_safety_radius = safety_radius - 0.1
             #Pos Y
             A[count, (2*k, 2*k+1)] = np.array([0,1])
-            b[count] = 0.4*barrier_gain*(boundary_points[3] - safety_radius/2 - x[1,k])**3  # cubic
+            b[count] = 0.4*barrier_gain*(boundary_points[3] - boundary_safety_radius/2 - x[1,k])**3  # cubic
             # b[count] = 0.4*barrier_gain*(boundary_points[3] - safety_radius/2 - x[1,k])
             count += 1
 
             #Neg Y
             A[count, (2*k, 2*k+1)] = -np.array([0,1])
-            b[count] = 0.4*barrier_gain*(-boundary_points[2] - safety_radius/2 + x[1,k])**3
+            b[count] = 0.4*barrier_gain*(-boundary_points[2] - boundary_safety_radius/2 + x[1,k])**3
             # b[count] = 0.4*barrier_gain*(-boundary_points[2] - safety_radius/2 + x[1,k])
             count += 1
 
             #Pos X
             A[count, (2*k, 2*k+1)] = np.array([1,0])
-            b[count] = 0.4*barrier_gain*(boundary_points[1] - safety_radius/2 - x[0,k])**3
+            b[count] = 0.4*barrier_gain*(boundary_points[1] - boundary_safety_radius/2 - x[0,k])**3
             # b[count] = 0.4*barrier_gain*(boundary_points[1] - safety_radius/2 - x[0,k])
             count += 1
 
             #Neg X
             A[count, (2*k, 2*k+1)] = -np.array([1,0])
-            b[count] = 0.4*barrier_gain*(-boundary_points[0] - safety_radius/2 + x[0,k])**3
+            b[count] = 0.4*barrier_gain*(-boundary_points[0] - boundary_safety_radius/2 + x[0,k])**3
             # b[count] = 0.4*barrier_gain*(-boundary_points[0] - safety_radius/2 + x[0,k])
             count += 1
         
@@ -469,7 +470,7 @@ def create_single_integrator_barrier_certificate_with_boundary(barrier_gain=100,
     return f
 
 
-def create_single_integrator_barrier_certificate_with_boundary_ellipse(barrier_gain=100, safety_a=0.17, safety_b=0.12, magnitude_limit=0.2, boundary_points = np.array([-1.6, 1.6, -1.0, 1.0])):
+def create_single_integrator_barrier_certificate_with_boundary_ellipse(barrier_gain=100, safety_a=0.17, safety_b=0.12, magnitude_limit=0.2, boundary_points = np.array([-1.6, 1.6, -1.2, 1.2])):
     """Creates a barrier certificate for a single-integrator system with an elliptical safety region with a rectangular boundary included.  This function
     returns another function for optimization reasons.
 
@@ -536,8 +537,8 @@ def create_single_integrator_barrier_certificate_with_boundary_ellipse(barrier_g
                 count += 1
         
         for k in range(N):
-            # Set it as static circle barrier for now 
-            safety_radius = 0.17 
+            # Set it as static circle barrier 
+            safety_radius = 0.07 
             #Pos Y
             A[count, (2*k, 2*k+1)] = np.array([0,1])
             b[count] = 0.4*barrier_gain*(boundary_points[3] - safety_radius/2 - x[1,k])**3  # cubic

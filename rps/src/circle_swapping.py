@@ -21,7 +21,7 @@ iterations = 600
 # This portion of the code generates points on a circle enscribed in a 6x6 square
 # that's centered on the origin.  The robots switch positions on the circle.
 # Define the radius of the circle for robot initial positions
-N = 4 # 2,4,8,11,16,20
+N = 20 # 2,4,8,11,16,20
 circle_radius = 0.9
 
 # Calculate initial positions in a circular formation
@@ -99,8 +99,8 @@ si_position_controller = create_si_position_controller()
 # to collide.  Thus, we're going to use barrier certificates (in a centrialized way)
 
 # Initialize parameters
-radius = 0.20
-a = 0.24
+radius = 0.25
+a = 0.25
 b = 0.20
 
 si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=10,safety_radius=radius)
@@ -167,7 +167,7 @@ while(1):
 
         # Store current positions in the trajectory list
         for i in range(N):
-            trajectories[i].append(x[:2, i].copy())  # Store the (x, y) position
+            trajectories[i].append(x[:, i].copy())  # Store the (x, y) position
 
         # Angles
         thetas = x[2,:]
@@ -229,13 +229,13 @@ while(1):
             if current_CBF_shape == 1:
                 # Morph from ellipse to circle
                 dxu = dxu_cir
-                a = (1 - alpha) * 0.18 + alpha * 0.15  # Interpolate ellipse width to circle radius
-                b = 0.15  # Keep b constant, or you can interpolate if needed
+                b = (1 - alpha) * 0.14 + alpha * 0.16  # Interpolate ellipse width to circle radius
+                a = 0.16  # Keep a constant, or you can interpolate if needed
             elif current_CBF_shape == 2:
                 # Morph from circle to ellipse
                 dxu = dxu_ellip
-                a = (1 - alpha) * 0.15 + alpha * 0.18  # Interpolate circle radius to ellipse width
-                b = 0.15  # Keep b constant, or adjust if you want the height to morph too
+                b = (1 - alpha) * 0.16 + alpha * 0.14  # Interpolate circle radius to ellipse width
+                a = 0.16  # Keep a constant, or adjust if you want the height to morph too
 
             # If the transition is complete, stop the morphing
             if alpha >= 1:
@@ -243,13 +243,13 @@ while(1):
         else:
             if current_CBF_shape == 1:
                 dxu = dxu_cir
-                a = 0.15
-                b = 0.15
+                a = 0.16
+                b = 0.16
 
             elif current_CBF_shape == 2:
                 dxu = dxu_ellip
-                a = 0.18
-                b = 0.15
+                a = 0.16
+                b = 0.14
         # Remove previous scatter plot markers
         for g in g_objects:
             g.remove()
