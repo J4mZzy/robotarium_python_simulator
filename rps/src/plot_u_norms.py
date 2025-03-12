@@ -34,7 +34,7 @@ plt.xlabel(r"\textbf{Time step}", fontsize=22)
 plt.ylabel(r"$\mathbf{\Vert u\Vert}$ $(m/s)$", fontsize=22)
 
 # Adjust y-axis limits for better differentiation
-plt.ylim(0, max(norm_varying) * 1.2)  # Increase range for more contrast
+plt.ylim(0, max(norm_varying) * 0.5)  # Increase range for more contrast
 
 # Improve grid aesthetics (make it subtle)
 # plt.grid(True, linestyle='--', linewidth=0.6, alpha=0.6)

@@ -91,7 +91,8 @@ elif np.mod(N, 2) != 0:
 
     rect_height = rect_height*1.4
 
-    spacing_left = rect_height / left_column_robots  # Vertical spacing for left column
+    spacing_left = rect_height / left_column_robots 
+    spacing_left = spacing_left + 0.05 # Vertical spacing for left column
     spacing_right = rect_height / right_column_robots if right_column_robots > 0 else spacing_left  # Avoid division by zero
 
     # Staggered left-right distribution
@@ -182,7 +183,7 @@ b = 0.20
 si_barrier_cert_cir = create_single_integrator_barrier_certificate_with_boundary(barrier_gain=10,safety_radius=radius)
 si_barrier_cert_ellip = create_single_integrator_barrier_certificate_with_boundary_ellipse(barrier_gain=0.1,safety_a=a,safety_b=b)
 ######## remember to change this to 2 when running ellipse ######################
-prev_CBF_shape = 2 # initialize the shape flag as 1 (1 is circle and 2 is ellipse)
+prev_CBF_shape = 1 # initialize the shape flag as 1 (1 is circle and 2 is ellipse)
 
 # Initialize the transition variables
 transition_in_progress = False
@@ -220,8 +221,8 @@ for ii in range(goal_points.shape[1])]
 # rectangle_box = r.axes.scatter(0, 0, s=marker_size_goal*50, marker='s', facecolors='none',edgecolors=(255/255, 0/255, 0/255),linewidth=line_width,zorder=-3)
 
 
-# r.step()
-r.step_no_error()
+r.step()
+# r.step_no_error()
 
 
 # Initialize a list to keep track of the scatter objects
@@ -258,10 +259,10 @@ while(1):
         # Use the barrier certificates to make sure that the agents don't collide
 
         ########################### barrier type ######################################
-        # dxi_cir = si_barrier_cert_cir(dxi, x_si)
-        dxi_cir = si_barrier_cert_ellip(dxi, x_si,thetas)
-        dxi_ellip = si_barrier_cert_ellip(dxi, x_si,thetas)
-        # dxi_ellip = si_barrier_cert_cir(dxi, x_si) 
+        dxi_cir = si_barrier_cert_cir(dxi, x_si)
+        # dxi_cir = si_barrier_cert_ellip(dxi, x_si,thetas)
+        # dxi_ellip = si_barrier_cert_ellip(dxi, x_si,thetas)
+        dxi_ellip = si_barrier_cert_cir(dxi, x_si) 
 
         ############### progress? ######################
 
@@ -358,8 +359,8 @@ while(1):
             break
 
         # Iterate the simulation
-        # r.step()
-        r.step_no_error()
+        r.step()
+        # r.step_no_error()
 
 #Call at end of script to print debug information and for your script to run on the Robotarium server properly
 r.call_at_scripts_end()

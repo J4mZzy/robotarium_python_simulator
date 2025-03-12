@@ -106,7 +106,7 @@ b = 0.20
 si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=10,safety_radius=radius)
 si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=0.1,safety_a=a,safety_b=b)
 ######## remember to change this to 2 when running ellipse ######################
-prev_CBF_shape = 1 # initialize the shape flag as 1 (1 is circle and 2 is ellipse)
+prev_CBF_shape = 2 # initialize the shape flag as 1 (1 is circle and 2 is ellipse)
 
 # Initialize the transition variables
 transition_in_progress = False
@@ -181,8 +181,8 @@ while(1):
 
         ########################### barrier type ######################################
         # Use the barrier certificates to make sure that the agents don't collide
-        dxi_cir = si_barrier_cert_cir(dxi, x_si)
-        # dxi_cir = si_barrier_cert_ellip(dxi, x_si,thetas)
+        # dxi_cir = si_barrier_cert_cir(dxi, x_si)
+        dxi_cir = si_barrier_cert_ellip(dxi, x_si,thetas)
         dxi_ellip = si_barrier_cert_ellip(dxi, x_si,thetas)
         # dxi_ellip = si_barrier_cert_cir(dxi, x_si) 
 
