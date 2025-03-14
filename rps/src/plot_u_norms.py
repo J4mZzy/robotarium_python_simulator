@@ -1,6 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+'''This code generates the plot for the robots' u_norm generated from circular CBF, elliptical CBF, and our CBF selection scheme
+during the experiment from reading the data saved through the simulations/experiments'''
+
 # Load the saved norms
 norms = np.load("u_norms.npy")
 
@@ -33,13 +36,9 @@ plt.plot(iterations, norm_varying, label=r"\textbf{Time-Varying CBF} $\mathbf{\V
 plt.xlabel(r"\textbf{Time step}", fontsize=22)
 plt.ylabel(r"$\mathbf{\Vert u\Vert}$ $(m/s)$", fontsize=22)
 
-# Adjust y-axis limits for better differentiation
-plt.ylim(0, max(norm_varying) * 0.5)  # Increase range for more contrast
+# Adjust y-axis limits 
+plt.ylim(0, max(norm_varying) * 1) 
 
-# Improve grid aesthetics (make it subtle)
-# plt.grid(True, linestyle='--', linewidth=0.6, alpha=0.6)
-
-# Improve legend placement and style
 # plt.legend(fontsize=12, loc="upper left", bbox_to_anchor=(1.02, 1),
 #            frameon=True, edgecolor='black', framealpha=1)
 plt.legend(fontsize=20,edgecolor = 'black')

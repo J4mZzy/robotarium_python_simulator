@@ -292,7 +292,7 @@ while(1):
 r.call_at_scripts_end()
 
 
-# ## plot block
+## plot block
 
 # # Plotting the position trajectories
 # print("Preparing to plot trajectories...")

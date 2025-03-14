@@ -1,17 +1,25 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-# load data
+'''This code generates the plot for the minimum h (CBF output) value between all the robots during the experiment 
+from reading the data saved through the simulations/experiments'''
+
+# Load data
 trajectories = np.load('trajectories.npy', allow_pickle=True).item()
 
+# Number of robots in the simulation/experiment
 N = 20 # 2,4,8,11,16,20
-
-# trajectory = np.array(trajectories[i]) 
 
 # time steps
 T = np.array(trajectories[0]).shape[0]
 h_min = np.empty(T)
 # print(np.array(trajectories[0])[1,:])
+
+## Setting values for the barrier parameters
+r = 0.25 # Circle radius
+a = 0.25 # Ellipse major axis length
+b = 0.2  # Ellipse minor axis length
+
 for t in range(T):
     h_min[t] = np.inf
     for i in range(N-1):
@@ -19,29 +27,33 @@ for t in range(T):
         for j in range(i+1, N):
             x_j = np.array(trajectories[j])[t,:]
             
-            ## Circle
+            ## Circular CBF
             error_0 = x_i[0]-x_j[0]
             error_1 = x_i[1]-x_j[1]
-            h_ij_cir = (error_0*error_0 + error_1*error_1) - np.power(0.25, 2)
+            h_ij_cir = (error_0*error_0 + error_1*error_1) - np.power(r, 2)
 
-            # ellipse
-            error_3 = (error_0*np.cos(x_i[2])+error_1*np.sin(x_i[2])) / 0.25
-            error_4 = (error_0*np.sin(x_i[2])-error_1*np.cos(x_i[2])) / 0.2
-            h_ij_ell = error_3**2 + error_4**2 - 1  
+            ## Elliptical CBF
+            error_2 = (error_0*np.cos(x_i[2])+error_1*np.sin(x_i[2])) / a
+            error_3 = (error_0*np.sin(x_i[2])-error_1*np.cos(x_i[2])) / b
+            h_ij_ell = error_2**2 + error_3**2 - 1  
 
             h_ij = np.min(np.array([h_ij_cir,h_ij_ell]))
 
+    ## Pick the samller one 
     if h_ij < h_min[t]:
         h_min[t] = h_ij
 
+## Variables
 iterations = np.arange(T)
 h_min_global = np.min(h_min)
 index = np.argmin(h_min)
 zeros = np.zeros(T)
+
+## Display minimum value of all time on terminal
 print(h_min_global)
 
+## Plot block
 plt.figure(figsize=(8, 5.5))
-
 
 # Set global font to Times New Roman and enable LaTeX
 plt.rcParams['font.family'] = 'Times New Roman'
@@ -66,13 +78,5 @@ plt.yticks(fontsize=18)
 # plt.savefig("h_min_20_agents", dpi=600)
 plt.show()
 
-
-
-# we only need to find the error produced by the closest agents
-
-# error_1 = (error[0]*np.cos(theta[agent_index])+error[1]*np.sin(theta[agent_index])) / safety_a
-# error_2 = (error[0]*np.sin(theta[agent_index])-error[1]*np.cos(theta[agent_index])) / safety_b
-
-# h = error_1**2 + error_2**2 - 1   
 
 
