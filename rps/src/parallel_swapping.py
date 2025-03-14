@@ -30,8 +30,6 @@ rect_height = 1.2  # Height of the rectangle
 initial_x = np.zeros(N)
 initial_y = np.zeros(N)
 initial_heading = np.zeros(N)
-# spacing = rect_height / (N // 2 - 1)  # Vertical spacing between robots on each side
-
 
 if N == 2:
     # For the two-robot case

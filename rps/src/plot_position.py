@@ -7,12 +7,16 @@ from rps.utilities.controllers import *
 import numpy as np
 import matplotlib.pyplot as plt
 
-# This portion of the code generates points on a circle enscribed in a 6x6 square
-# that's centered on the origin.  The robots switch positions on the circle.
-# Define the radius of the circle for robot initial positions
+
+'''This code generates the plot for the positions of the robots during the experiment 
+from reading the data saved through the simulations/experiments'''
+
+# Number of robots
 N = 20 # 2,4,8,11,16,20
 
-############################ Circle swapping##################################
+#################################### Circle swapping ###############################################################
+# Uncomment if the simulation/experiment is a circle swapping scenario, comment out the block if it's the other case
+
 # circle_radius = 0.9
 
 # # Calculate initial positions in a circular formation
@@ -32,10 +36,10 @@ N = 20 # 2,4,8,11,16,20
 
 # goal_points[0, :] = -initial_conditions[0,:] 
 # goal_points[1, :] = -initial_conditions[1,:]
-#################################################################################
 
+#################################### Parallel swapping #############################################################
+# Uncomment if the simulation/experiment is a parallel swapping scenario, comment out the block if it's the other case
 
-####################################Ellipse swapping###########################################
 rect_width = 1.6  # Width of the rectangle
 rect_height = 1.2  # Height of the rectangle
 
@@ -44,7 +48,6 @@ initial_x = np.zeros(N)
 initial_y = np.zeros(N)
 initial_heading = np.zeros(N)
 # spacing = rect_height / (N // 2 - 1)  # Vertical spacing between robots on each side
-
 
 if N == 2:
     # For the two-robot case
@@ -116,7 +119,9 @@ elif np.mod(N, 2) != 0:
             initial_heading[i] = np.pi  # Facing left
             # Place robots in right column with even spacing
             initial_y[i] = rect_height / 2 - ((i - 1) // 2) * spacing_right
+######################################################################################################################
 
+###################################### Initialization ################################################################
 
 # Combine initial positions into the required format (x, y, theta)
 initial_conditions = np.array([initial_x, initial_y, initial_heading])
@@ -140,14 +145,12 @@ CM = cmap(np.linspace(0, 1, N))  # Generate N colors evenly spaced within the co
 goal_marker_size_m = 0.1
 font_size = determine_font_size(r,0.1)
 line_width = 5
-
 marker_size_goal = determine_marker_size(r,goal_marker_size_m)
 
-
-# load data
+# Load data
 trajectories = np.load('trajectories.npy', allow_pickle=True).item()
 
-# plot block
+############################################### Plot block ########################################################
 
 # Plotting the position trajectories
 print("Preparing to plot trajectories...")
@@ -155,12 +158,10 @@ print("Preparing to plot trajectories...")
 plt.rcParams['font.family'] = 'Times New Roman'
 # Enable LaTeX plotting
 plt.rc('text', usetex=True)
-
 plt.figure(figsize=(9.5, 9))
 for i in range(N):
     trajectory = np.array(trajectories[i]) # i-th agent 
     plt.plot(trajectory[:, 0], trajectory[:, 1], label=f'Robot {i + 1}', color=CM[i],linewidth=3)
-
 plt.scatter(goal_points[0, :], goal_points[1, :], color=CM, marker='*', s=200, label='Goals',linewidth=3)
 
 # Add 10 cm (0.1 m) dashed circles around each goal point
@@ -169,7 +170,6 @@ for i in range(goal_points.shape[1]):  # Loop over goal points
     plt.gca().add_patch(circle)  # Add the circle to the plot
 
 # Increase font sizes for title, labels, and legend
-# plt.title('Robot Trajectories', fontsize=40)
 plt.xlabel('$$x (m)$$', fontsize=28)
 plt.ylabel('$$y (m)$$', fontsize=28)
 plt.xticks(fontsize=18)  # Font size for x-axis ticks
@@ -179,5 +179,6 @@ plt.yticks(fontsize=18)  # Font size for y-axis ticks
 # legend = plt.legend(fontsize=12, loc='upper left') 
 # legend.set_draggable(True)  # Make the legend draggable
 # plt.savefig("pos_plot.png", dpi=600)
+
 plt.show(block=True)  # Keep the plot window open
 print("Plotting complete.")
