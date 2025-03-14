@@ -9,6 +9,10 @@ from matplotlib.patches import Ellipse
 import matplotlib.pyplot as plt
 import time
 
+
+'''This code is for the decentrailized implementation of the CBF selection algorithm for simulations/experiments
+CAVEAT: IT IS STILL UNDER PROGRESS (FUTURE WORK), IT MAY NOT WORK!'''
+
 # # Instantiate Robotarium object
 # N = 4
 
