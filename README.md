@@ -175,10 +175,16 @@ pip install cvxopt --user
 ```
 
 ## Usage
-To run one of the examples:
+
+To run the circle swapping simulation from the paper:
 
  ```
- python "path_to_simulator"/rps/examples/plotting/barrier_certificates_with_plotting.py
+ python "path_to_simulator"/rps/src/circle_swapping.py
+ ```
+
+To run the parallel swapping simulation from the paper:
+ ```
+ python "path_to_simulator"/rps/src/parallel_swapping.py
  ```
 
 ## Issues
