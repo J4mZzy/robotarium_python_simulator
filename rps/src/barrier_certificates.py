@@ -209,8 +209,8 @@ def create_single_integrator_barrier_certificate_ellipse_decentralized(agent_ind
                 # if np.linalg.norm(error) > safety_a * DIST_IGNORE_MULTIPLIER:
                     # if agents are too far, ignore this collision pair
                     continue
-                # if np.mod(agent_index,2) == 0:
-                #     theta[agent_index] = theta[agent_index] + np.pi/4
+                if np.mod(agent_index,2) == 0:
+                    theta[agent_index] = theta[agent_index] + np.pi/40
                 A[count, 0] = -2 * ((error[0])*np.cos(theta[agent_index])+(error[1])*np.sin(theta[agent_index]))*np.cos(theta[agent_index])/ safety_a**2 - 2 * ((error[0])*np.sin(theta[agent_index])-(error[1])*np.cos(theta[agent_index]))*np.sin(theta[agent_index])/ safety_b**2
                 A[count, 1] = -2 * ((error[0])*np.cos(theta[agent_index])+(error[1])*np.sin(theta[agent_index]))*np.sin(theta[agent_index])/ safety_a**2 - 2 * ((error[0])*np.sin(theta[agent_index])-(error[1])*np.cos(theta[agent_index]))*-np.cos(theta[agent_index])/ safety_b**2
                 # A[count+1, 0] = 2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_b**2

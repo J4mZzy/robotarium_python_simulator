@@ -26,7 +26,7 @@ iterations = 600
 # This portion of the code generates points on a circle enscribed in a 6x6 square
 # that's centered on the origin.  The robots switch positions on the circle.
 # Define the radius of the circle for robot initial positions
-N = 10
+N = 18
 circle_radius = 0.8
 
 # Calculate initial positions in a circular formation
@@ -43,20 +43,8 @@ initial_conditions = np.array([initial_x, initial_y, initial_heading])
 r = robotarium.Robotarium(number_of_robots=N, show_figure=True, sim_in_real_time=True, initial_conditions=initial_conditions)
 # Define goal points: for a swapping behavior, we can simply offset the current positions
 goal_points = np.array([initial_x, initial_y, theta])  # Start by setting goal points to the current positions
-# Swap the diagonally opposite robots
-for i in range(N//2):
-    opposite_idx = (i + N//2) % N  # Index of the opposite robot
-    
-    # Store positions in a temporary variable to avoid overwriting
-    temp_x, temp_y, temp_theta = goal_points[:, i]
-    
-    goal_points[0, i] = goal_points[0, opposite_idx]  # Swap x
-    goal_points[1, i] = goal_points[1, opposite_idx]  # Swap y
-    goal_points[2, i] = goal_points[2, opposite_idx]  # Swap theta
-    
-    goal_points[0, opposite_idx] = temp_x  # Assign temp values to opposite robot
-    goal_points[1, opposite_idx] = temp_y
-    goal_points[2, opposite_idx] = temp_theta
+goal_points[0, :] = -initial_conditions[0,:] 
+goal_points[1, :] = -initial_conditions[1,:]
 
 # Plotting Parameters
 
