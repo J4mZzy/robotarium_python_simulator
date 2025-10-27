@@ -62,8 +62,8 @@ CM = cmap(np.linspace(0, 1, N))  # Generate N colors evenly spaced within the co
 # CM = np.array([[0, 0, 0]] * N)
  
 # Default Barrier Parameters (for visualization) 
-safety_radius = 0.15
-safety_radius_marker_size = determine_marker_size(r,safety_radius) # Will scale the plotted markers to be the diameter of provided argument (in meters)
+safety_radius_view = 0.15
+safety_radius_marker_size = determine_marker_size(r,safety_radius_view) # Will scale the plotted markers to be the diameter of provided argument (in meters)
 font_height_meters = 0.2
 font_height_points = determine_font_size(r,font_height_meters) # Will scale the plotted font height to that of the provided argument (in meters)
 
@@ -75,18 +75,25 @@ radius = 0.25
 a = 0.25
 b = 0.20
 
+############################################ CBF Library #######################################################
 # We're working in single-integrator dynamics, and we don't want the robots
 # to collide.  Thus, we're going to use barrier certificates (in a centrialized way)
-
+CBF_n = 2 # how many CBFs we are using 
 si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=10,safety_radius=radius)
 si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=0.1,safety_a=a,safety_b=b)
-######## remember to change this to 2 when running ellipse ######################
-prev_CBF_shape = 1 # initialize the shape flag as 1 (1 is circle and 2 is ellipse)
+
+######## Remember to change this to 1 when running ellipse ######################
+current_CBF_shape = 1 # initialize the shape flag as 1 (1 is circle and 2 is ellipse)
+target_array = np.zeros(CBF_n)
+target_array[current_CBF_shape-1] = 1
+
+# Default shape (begin with circle)         
+Delta_cur = np.array([1.0,0.0]) # current Delta array
 
 # Initialize the transition variables
 transition_in_progress = False
-start_time = None
-transition_duration = 1  # Duration for the morphing transition in seconds
+# start_time = None
+T = 1  # Duration for the morphing transition in seconds
 exp_start_time = time.time()
 
 # Create SI to UNI dynamics tranformation
@@ -131,10 +138,14 @@ trajectories = {i: [] for i in range(N)}
 norm_dxi_cir_list = []
 norm_dxi_ellip_list = []
 
+## initialize for loop speed calculation
+start_time = None # timer variable in loop
+dt = None
+prev_time = None
+
 # While the goal is not reached
 while(1):
     # for i in range(iterations):
-
         # Get poses of agents
         x = r.get_poses()
 
@@ -152,70 +163,80 @@ while(1):
 
         ########################### barrier type ######################################
         # Use the barrier certificates to make sure that the agents don't collide
+        # Generating safe inputs
+
         dxi_cir = si_barrier_cert_cir(dxi, x_si)                # the first barrier being circular
         # dxi_cir = si_barrier_cert_ellip(dxi, x_si,thetas)     # the first barrier being elliptical 
         dxi_ellip = si_barrier_cert_ellip(dxi, x_si,thetas)     # the second barrier being elliptical
         # dxi_ellip = si_barrier_cert_cir(dxi, x_si)            # the second barrier being circular
-        ###############################################################################
+        
+        
+        ############################# selection ########################################
         # Use the second single-integrator-to-unicycle mapping to map to unicycle
-        # dynamics
-        dxu_cir = si_to_uni_dyn(dxi_cir, x)
-        dxu_ellip = si_to_uni_dyn(dxi_ellip, x)
-
+        dxu_cir = si_to_uni_dyn(dxi_cir, x) # circular
+        dxu_ellip = si_to_uni_dyn(dxi_ellip, x) # elliptical
+        
+        # Default shape
+        dxu = dxu_cir
+        # For target shape, circle =1, ellipse=2
         norm_dxi_cir = np.linalg.norm(dxi_cir,ord=2)
         norm_dxi_ellip = np.linalg.norm(dxi_ellip,ord=2)
+        ##TODO find the norm of the actual input in si
 
-        # Append the norms to the lists
+        # Append the norms to the lists for post-processing
         norm_dxi_cir_list.append(norm_dxi_cir)
         norm_dxi_ellip_list.append(norm_dxi_ellip)
 
-        if not transition_in_progress:
-            # for smooth transitions
-            if norm_dxi_cir > norm_dxi_ellip:
-                max_norm = norm_dxi_cir # keep the circle
-                current_CBF_shape = 1  # Circle
-            elif norm_dxi_cir < norm_dxi_ellip:
-                max_norm = max(norm_dxi_cir,norm_dxi_ellip)
-                current_CBF_shape = 2  # Ellipse
-            elif norm_dxi_cir == norm_dxi_ellip:
-                current_CBF_shape = prev_CBF_shape   # keep the shape
-        
-        # Check if the shape has changed
-        if current_CBF_shape != prev_CBF_shape and not transition_in_progress:
-            # Shape has changed, start the transition
-            transition_in_progress = True
-            start_time = time.time()  # Reset the start time for transition
-            prev_CBF_shape = current_CBF_shape  # Update the flag with the new shape
-        
-        # If transition is in progress, calculate alpha and morph between shapes
-        if transition_in_progress:
-            time_elapsed = time.time() - start_time  # Calculate elapsed time
-            alpha = np.clip(time_elapsed / transition_duration, 0, 1)  # Compute alpha
-            
-            if current_CBF_shape == 1:
-                # Morph from ellipse to circle
-                dxu = dxu_cir
-                b = (1 - alpha) * 0.14 + alpha * 0.16  # Interpolate ellipse width to circle radius
-                a = 0.16  # Keep a constant, or you can interpolate if needed
-            elif current_CBF_shape == 2:
-                # Morph from circle to ellipse
-                dxu = dxu_ellip
-                b = (1 - alpha) * 0.16 + alpha * 0.14  # Interpolate circle radius to ellipse width
-                a = 0.16  # Keep a constant, or adjust if you want the height to morph too
+        # Finding s_t, which is the shape we are morphing to
+        target_CBF_shape = np.argmax([norm_dxi_cir,norm_dxi_ellip]) + 1 # s_t (shape to morph into) 
+        # print("index:",target_CBF_shape)
 
-            # If the transition is complete, stop the morphing
-            if alpha >= 1:
-                transition_in_progress = False
+        ## Set target shape array
+        target_array[:] = 0 # reset to 0
+        # print("target_array_zeros",target_array)
+        target_array[target_CBF_shape - 1] = 1 # target array, the shape we want to 
+        # print("target_array_actual",target_array)
+        # print("Delta_cur",Delta_cur)
+
+        ######################################################################################
+        if prev_time is None:
+            prev_time = time.time() # start timer
+        now = time.time() # start counter
+        dt = now - prev_time 
+        eta = np.sqrt(2)/T*dt # rate of change
+        # print(np.linalg.norm((target_array-Delta_cur),ord=2))
+
+        # if the change gets to a terminal shape, or exceeds it
+        if np.linalg.norm(target_array-Delta_cur,ord=2) <= eta:
+            Delta_target = target_array.copy() # complete transformation to a terminal shape
         else:
-            if current_CBF_shape == 1:
-                dxu = dxu_cir
-                a = 0.16
-                b = 0.16
+            # we morph into the desired CBF 
+            Delta_target = Delta_cur + eta* (target_array-Delta_cur) # used to calculate h3, discretized change
+         
+        Delta_dot = 1/T # compute delta dot
+        # print("Delta_target:",Delta_target)
+        # print("Delta_cur[1]:",Delta_cur[1])
 
-            elif current_CBF_shape == 2:
-                dxu = dxu_ellip
-                a = 0.16
-                b = 0.14
+        # For plotting CBF shapes, the a and b currently 
+        b_cur = Delta_cur[0] * 0.25 + Delta_cur[1] * 0.20  # Interpolate ellipse width to circle radius
+        a_cur = 0.25  # Keep a constant, or you can interpolate if needed
+        # print("Delta sum:",Delta_cur[0]+Delta_cur[1])
+
+        prev_time = time.time() # record time
+
+        # print("a_cur:",a_cur)
+        # print("b_cur:",b_cur)
+
+        ## Delta cur is used to get the current convex combination CBF, and Delta target is used to calculate h3 (time varying CBF)!
+        si_barrier_cert_tv = create_single_integrator_barrier_certificate_time_varying(Delta_cur,Delta_target,Delta_dot,target_CBF_shape=target_CBF_shape
+                                                                                       ,barrier_gain=100,safety_radius=radius
+                                                                                       ,safety_a=a,safety_b=b,a_cur=a_cur,b_cur=b_cur)  
+        dxi_tv = si_barrier_cert_tv(dxi, x_si, thetas)  
+        dxu_tv = si_to_uni_dyn(dxi_tv, x)      
+        dxu = dxu_tv
+        # dxu = dxu_ellip
+        ## Delta cur has ([circle,ellipse])
+        Delta_cur = Delta_target # update Delta current     
         # Remove previous scatter plot markers
         for g in g_objects:
             g.remove()
@@ -234,7 +255,7 @@ while(1):
         # Create and add ellipses to the axes
         for i in range(N):
             ellipse = Ellipse(xy=(x[0, i] + L * np.cos(x[2, i]), x[1, i] + L * np.sin(x[2, i])),
-                            width=a, height=b, angle=np.degrees(thetas[i]),
+                            width=a_cur*0.9, height=b_cur*0.9, angle=np.degrees(thetas[i]),
                             facecolor='none', edgecolor=CM[i], linewidth=2)
             r.axes.add_patch(ellipse)
             g_objects.append(ellipse)  # Keep track of the patches       
@@ -242,7 +263,7 @@ while(1):
         # Set the velocities by mapping the single-integrator inputs to unciycle inputs
         r.set_velocities(np.arange(N), dxu)
 
-        # Stopping cirterion 
+        # Stopping cirterion (if goal is reached)
         if(np.linalg.norm(goal_points[:2,:] - x_si) < 0.08):
             break
 

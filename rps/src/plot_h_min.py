@@ -8,7 +8,7 @@ from reading the data saved through the simulations/experiments'''
 trajectories = np.load('trajectories.npy', allow_pickle=True).item()
 
 # Number of robots in the simulation/experiment
-N = 20 # 2,4,8,11,16,20
+N = 11 # 2,4,8,11,16,20
 
 # time steps
 T = np.array(trajectories[0]).shape[0]

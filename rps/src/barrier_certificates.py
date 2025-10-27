@@ -279,9 +279,10 @@ def create_single_integrator_barrier_certificate_ellipse(barrier_gain=100, safet
         for i in range(N-1):
             for j in range(i+1, N):
                 error = x[:, i] - x[:, j]
-                error_1 = (error[0]*np.cos(theta[j])+error[1]*np.sin(theta[j])) / safety_a
+                error_1 = (error[0]*np.cos(theta[j])+error[1]*np.sin(theta[j])) / safety_a 
                 error_2 = (error[0]*np.sin(theta[j])-error[1]*np.cos(theta[j])) / safety_b
                 h = error_1**2 + error_2**2 - 1    
+
 
                 # if np.mod(i,2) == 0:
                 A[count, 2*i] = -2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_a**2 - 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_b**2
@@ -295,6 +296,132 @@ def create_single_integrator_barrier_certificate_ellipse(barrier_gain=100, safet
                 #     A[count, 2*j+1] = 2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*-np.sin(theta[j])/ safety_b**2 + 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.cos(theta[j])/ safety_a**2
 
                 b[count] = barrier_gain * h**3
+                count += 1
+
+        # Threshold control inputs before QP
+        norms = np.linalg.norm(dxi, 2, axis=0)
+        idxs_to_normalize = (norms > magnitude_limit)
+        dxi[:, idxs_to_normalize] *= magnitude_limit / norms[idxs_to_normalize]
+    
+        f = -2 * np.reshape(dxi, (2*N,), order='F')
+        result = qp(H, matrix(f), matrix(A), matrix(b))['x']
+
+        return np.reshape(result, (2, -1), order='F')
+
+    return f
+
+
+def create_single_integrator_barrier_certificate_time_varying(Delta_cur, Delta_target, Delta_dot, target_CBF_shape = 0, safety_radius=0.17, barrier_gain=100, safety_a=0.17, safety_b=0.12, a_cur =0.17, b_cur = 0.12, magnitude_limit=0.2):
+    """Creates a barrier certificate for a single-integrator system with circle to elliptical time varying safety region.
+    
+    barrier_gain: double (controls how quickly agents can approach each other. lower = slower)
+    safety_a: double (semi-major axis of the safety ellipse)
+    safety_b: double (semi-minor axis of the safety ellipse)
+    magnitude_limit: double (how fast the robot can move linearly)
+
+    -> function (the barrier certificate function)
+    """
+
+    # Check user input types
+    assert isinstance(barrier_gain, (int, float)), "The barrier gain must be an integer or float. Received type %r." % type(barrier_gain).__name__
+    assert isinstance(safety_a, (int, float)), "The semi-major axis of the safety ellipse must be an integer or float. Received type %r." % type(safety_a).__name__
+    assert isinstance(safety_b, (int, float)), "The semi-minor axis of the safety ellipse must be an integer or float. Received type %r." % type(safety_b).__name__
+    assert isinstance(magnitude_limit, (int, float)), "The maximum linear velocity of the robot must be an integer or float. Received type %r." % type(magnitude_limit).__name__
+
+    # Check user input ranges/sizes
+    assert barrier_gain > 0, "The barrier gain must be positive. Received %r." % barrier_gain
+    assert safety_a > 0 and safety_b > 0, "The semi-major and semi-minor axes must be positive. Received a: %r, b: %r." % (safety_a, safety_b)
+    assert magnitude_limit > 0, "The maximum linear velocity of the robot must be positive. Received %r." % magnitude_limit
+
+    def f(dxi, x,theta):
+        # Check user input types
+        assert isinstance(dxi, np.ndarray), "The single-integrator robot velocity command must be a numpy array. Received type %r." % type(dxi).__name__
+        assert isinstance(x, np.ndarray), "The robot states must be a numpy array. Received type %r." % type(x).__name__
+
+        # Check user input ranges/sizes
+        assert x.shape[0] == 2, "The dimension of the single integrator robot states must be 2 ([x;y]). Received dimension %r." % x.shape[0]
+        assert dxi.shape[0] == 2, "The dimension of the robot single integrator velocity command must be 2 ([x_dot;y_dot]). Received dimension %r." % dxi.shape[0]
+        assert x.shape[1] == dxi.shape[1], "The number of robot states must be equal to the number of robot single integrator velocity commands. Received x: %r x %r, dxi: %r x %r." % (x.shape[0], x.shape[1], dxi.shape[0], dxi.shape[1])
+
+        # Initialize variables for computational savings
+        N = dxi.shape[1]
+        num_constraints = int(N * (N - 1) / 2)
+        A = np.zeros((num_constraints, 2*N))
+        b = np.zeros(num_constraints)
+        H = sparse(matrix(2 * np.identity(2*N)))
+
+        count = 0
+        # theta=theta+np.pi/4
+
+        # Centralized QP
+        for i in range(N-1):
+            for j in range(i+1, N):
+                error = x[:, i] - x[:, j]
+                # circular CBF
+                h_circ = (error[0]*error[0] + error[1]*error[1]) - np.power(safety_radius, 2)
+
+                # ellipitical CBF
+                error_1 = (error[0]*np.cos(theta[j])+error[1]*np.sin(theta[j])) / safety_a
+                error_2 = (error[0]*np.sin(theta[j])-error[1]*np.cos(theta[j])) / safety_b 
+                h_ellip = error_1**2 + error_2**2 - 1  
+
+                # calculate the current h (convex combination)
+                h_cur = Delta_cur[0] * h_circ +  Delta_cur[1] * h_ellip 
+
+                # error_3 = (error[0]*np.cos(theta[j])+error[1]*np.sin(theta[j])) / a_cur
+                # error_4 = (error[0]*np.sin(theta[j])-error[1]*np.cos(theta[j])) / b_cur 
+                # h_cur2 = error_3**2 + error_4**2 - 1  
+                # print("first:",h_cur)
+                # print("second:",h_cur2)
+                
+                # h_circ dot
+                h_circ_dot1 = 2 * error[0]
+                h_circ_dot2 = 2 * error[1]
+
+                # h_ellip dot
+                h_ellip_dot1 = 2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_b**2
+                h_ellip_dot2 = 2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.sin(theta[j])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*-np.cos(theta[j])/ safety_b**2
+
+                # h_cur_dot1 = 2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ a_cur**2 + 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ b_cur**2
+                # h_cur_dot2 = 2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ a_cur**2 + 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ b_cur**2
+                
+                # Current h_dot
+                h_cur_dot1 = Delta_cur[0] * h_circ_dot1 +  Delta_cur[1] * h_ellip_dot1
+                h_cur_dot2 = Delta_cur[0] * h_circ_dot2 +  Delta_cur[1] * h_ellip_dot2
+
+                # if 1 switching current to circle, if 2 switching current to ellipse
+                if target_CBF_shape == 1:
+                    # calculate h_3 
+                    h_3 = Delta_target[1] * h_cur + Delta_target[0] * h_circ 
+                    # for time derivative 
+                    diff = h_circ - h_3
+                    # print("diff to circle",diff)
+
+                    A[count, 2*i] = -(Delta_target[1] * h_cur_dot1 + Delta_target[0] * h_circ_dot1)
+                    A[count, 2*i+1] = -(Delta_target[1] * h_cur_dot2 + Delta_target[0] * h_circ_dot2)
+                    A[count, 2*j] = Delta_target[1] * h_cur_dot1 + Delta_target[0] * h_circ_dot1
+                    A[count, 2*j+1] = Delta_target[1] * h_cur_dot2 + Delta_target[0] * h_circ_dot2
+
+                elif target_CBF_shape == 2:
+                    # calculate h_3 
+                    h_3 = Delta_target[1] * h_ellip + Delta_target[0] * h_cur 
+                    # for time derivative 
+                    diff = h_ellip - h_3
+                    # print("diff to ellipse",diff)
+                   
+                    A[count, 2*i] = - (Delta_target[1] * h_ellip_dot1 + Delta_target[0] * h_cur_dot1)
+                    A[count, 2*i+1] = - (Delta_target[1] * h_ellip_dot2 + Delta_target[0] * h_cur_dot2)
+                    A[count, 2*j] = Delta_target[1] * h_ellip_dot1 + Delta_target[0] * h_cur_dot1
+                    A[count, 2*j+1] = Delta_target[1] * h_ellip_dot2 + Delta_target[0] * h_cur_dot2
+
+                # A[count, 2*i] = -(h_ellip_dot1)
+                # A[count, 2*i+1] = -(h_ellip_dot2)
+                # A[count, 2*j] = h_ellip_dot1
+                # A[count, 2*j+1] = h_ellip_dot2
+                
+                # class k function and time derivative in delta 
+                b[count] = barrier_gain * h_3**3 + Delta_dot * diff
+                #  Delta_dot * diff
                 count += 1
 
         # Threshold control inputs before QP
@@ -422,8 +549,8 @@ def create_single_integrator_barrier_certificate_with_boundary(barrier_gain=100,
                 error = x[:, i] - x[:, j]
                 h = (error[0]*error[0] + error[1]*error[1]) - np.power(safety_radius, 2)
 
-                A[count, (2*i, (2*i+1))] = -2*error
-                A[count, (2*j, (2*j+1))] = 2*error
+                A[count, (2*i, (2*i+1))] = -2 * error
+                A[count, (2*j, (2*j+1))] = 2 * error
                 b[count] = barrier_gain*np.power(h, 3) #    cubic
                 # b[count] = barrier_gain*h
 
