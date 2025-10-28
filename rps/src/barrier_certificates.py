@@ -311,7 +311,7 @@ def create_single_integrator_barrier_certificate_ellipse(barrier_gain=100, safet
     return f
 
 
-def create_single_integrator_barrier_certificate_time_varying(Delta_cur, Delta_target, Delta_dot, target_CBF_shape = 0, safety_radius=0.17, barrier_gain=100, safety_a=0.17, safety_b=0.12, a_cur =0.17, b_cur = 0.12, magnitude_limit=0.2):
+def create_single_integrator_barrier_certificate_time_varying(Delta, lamb,target_shape, T, safety_radius=0.17, barrier_gain=100, safety_a=0.17, safety_b=0.12, a_cur =0.17, b_cur = 0.12, magnitude_limit=0.2):
     """Creates a barrier certificate for a single-integrator system with circle to elliptical time varying safety region.
     
     barrier_gain: double (controls how quickly agents can approach each other. lower = slower)
@@ -350,6 +350,22 @@ def create_single_integrator_barrier_certificate_time_varying(Delta_cur, Delta_t
         b = np.zeros(num_constraints)
         H = sparse(matrix(2 * np.identity(2*N)))
 
+        # Derivative of Delta
+        if Delta < 1:
+            Delta_dot = 1/T # compute delta dot
+        else:
+            Delta_dot = 0
+
+        # Delta = np.clip(Delta, 0.0, 1.0)
+        # if Delta < 1:
+        #     eps = 1e-3  # smaller = sharper rolloff
+        #     softplus = lambda x: eps * np.log1p(np.exp(x/eps))
+        #     scale = softplus(1.0)  # normalize so Δ=0 → ~1/T
+
+        #     Delta_dot = (1.0 / T) * (softplus(1.0 - Delta) / scale)
+        # else:
+        #     Delta_dot = 0
+        
         count = 0
         # theta=theta+np.pi/4
 
@@ -366,13 +382,11 @@ def create_single_integrator_barrier_certificate_time_varying(Delta_cur, Delta_t
                 h_ellip = error_1**2 + error_2**2 - 1  
 
                 # calculate the current h (convex combination)
-                h_cur = Delta_cur[0] * h_circ +  Delta_cur[1] * h_ellip 
+                h_cur = lamb[0] * h_circ +  lamb[1] * h_ellip 
 
                 # error_3 = (error[0]*np.cos(theta[j])+error[1]*np.sin(theta[j])) / a_cur
                 # error_4 = (error[0]*np.sin(theta[j])-error[1]*np.cos(theta[j])) / b_cur 
                 # h_cur2 = error_3**2 + error_4**2 - 1  
-                # print("first:",h_cur)
-                # print("second:",h_cur2)
                 
                 # h_circ dot
                 h_circ_dot1 = 2 * error[0]
@@ -386,41 +400,32 @@ def create_single_integrator_barrier_certificate_time_varying(Delta_cur, Delta_t
                 # h_cur_dot2 = 2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ a_cur**2 + 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ b_cur**2
                 
                 # Current h_dot
-                h_cur_dot1 = Delta_cur[0] * h_circ_dot1 +  Delta_cur[1] * h_ellip_dot1
-                h_cur_dot2 = Delta_cur[0] * h_circ_dot2 +  Delta_cur[1] * h_ellip_dot2
+                h_cur_dot1 = lamb[0] * h_circ_dot1 +  lamb[1] * h_ellip_dot1
+                h_cur_dot2 = lamb[0] * h_circ_dot2 +  lamb[1] * h_ellip_dot2
 
                 # if 1 switching current to circle, if 2 switching current to ellipse
-                if target_CBF_shape == 1:
+                if target_shape == 1:
                     # calculate h_3 
-                    h_3 = Delta_target[1] * h_cur + Delta_target[0] * h_circ 
+                    h_tv = (1-Delta) * h_cur + Delta * h_circ 
                     # for time derivative 
-                    diff = h_circ - h_3
+                    diff = h_circ - h_cur
                     # print("diff to circle",diff)
-
-                    A[count, 2*i] = -(Delta_target[1] * h_cur_dot1 + Delta_target[0] * h_circ_dot1)
-                    A[count, 2*i+1] = -(Delta_target[1] * h_cur_dot2 + Delta_target[0] * h_circ_dot2)
-                    A[count, 2*j] = Delta_target[1] * h_cur_dot1 + Delta_target[0] * h_circ_dot1
-                    A[count, 2*j+1] = Delta_target[1] * h_cur_dot2 + Delta_target[0] * h_circ_dot2
-
-                elif target_CBF_shape == 2:
-                    # calculate h_3 
-                    h_3 = Delta_target[1] * h_ellip + Delta_target[0] * h_cur 
+                    A[count, 2*i] = -((1-Delta) * h_cur_dot1 + Delta * h_circ_dot1)
+                    A[count, 2*i+1] = -((1-Delta) * h_cur_dot2 + Delta * h_circ_dot2)
+                    A[count, 2*j] = (1-Delta) * h_cur_dot1 + Delta * h_circ_dot1
+                    A[count, 2*j+1] = (1-Delta) * h_cur_dot2 + Delta * h_circ_dot2
+                elif target_shape == 2:
+                    h_tv = (1-Delta) * h_cur + Delta * h_ellip 
                     # for time derivative 
-                    diff = h_ellip - h_3
-                    # print("diff to ellipse",diff)
-                   
-                    A[count, 2*i] = - (Delta_target[1] * h_ellip_dot1 + Delta_target[0] * h_cur_dot1)
-                    A[count, 2*i+1] = - (Delta_target[1] * h_ellip_dot2 + Delta_target[0] * h_cur_dot2)
-                    A[count, 2*j] = Delta_target[1] * h_ellip_dot1 + Delta_target[0] * h_cur_dot1
-                    A[count, 2*j+1] = Delta_target[1] * h_ellip_dot2 + Delta_target[0] * h_cur_dot2
-
-                # A[count, 2*i] = -(h_ellip_dot1)
-                # A[count, 2*i+1] = -(h_ellip_dot2)
-                # A[count, 2*j] = h_ellip_dot1
-                # A[count, 2*j+1] = h_ellip_dot2
+                    diff = h_ellip - h_cur
+                    # print("diff to circle",diff)
+                    A[count, 2*i] = -((1-Delta) * h_cur_dot1 + Delta * h_ellip_dot1)
+                    A[count, 2*i+1] = -((1-Delta) * h_cur_dot2 + Delta * h_ellip_dot2)
+                    A[count, 2*j] = (1-Delta) * h_cur_dot1 + Delta * h_ellip_dot1
+                    A[count, 2*j+1] = (1-Delta) * h_cur_dot2 + Delta * h_ellip_dot2
                 
                 # class k function and time derivative in delta 
-                b[count] = barrier_gain * h_3**3 + Delta_dot * diff
+                b[count] = barrier_gain * h_tv**3 + Delta_dot * diff
                 #  Delta_dot * diff
                 count += 1
 
