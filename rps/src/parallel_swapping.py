@@ -381,7 +381,7 @@ while(1):
         # si_barrier_cert_tv, idx_sel, (w1_sel, w2_sel) = pick_cert_for_Delta(Delta_cur, target_shape)
         si_barrier_cert_tv = create_single_integrator_barrier_certificate_time_varying(Delta=Delta,lamb=lamb,target_shape=target_shape,t=t
                                                                                        ,barrier_gain=1,safety_radius=radius
-                                                                                       ,safety_a=a,safety_b=b,a_cur=a_cur,b_cur=b_cur)  
+                                                                                       ,safety_a=a,safety_b=b)  
 
         # si_barrier_cert_tv = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a,safety_b=b)
         dxi_tv = si_barrier_cert_tv(dxi, x_si, thetas)  

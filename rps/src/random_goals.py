@@ -5,7 +5,7 @@ from rps.utilities.misc import *
 from rps.utilities.controllers import *
 
 import numpy as np
-from matplotlib.patches import Ellipse,Circle
+from matplotlib.patches import Ellipse
 import matplotlib.pyplot as plt
 import time
 
@@ -24,7 +24,7 @@ rect_width   = 2.5
 rect_height  = 1.6
 margin_x     = 0.15         # keep a small margin from left/right edges
 two_row_thresh = 8          # switch to two rows when N >= 8
-row_gap      = 0.30         # vertical gap between rows on a side
+row_gap      = 0.4         # vertical gap between rows on a side
 
 x_left  = -rect_width/2  + margin_x
 x_right =  rect_width/2  - margin_x
@@ -71,7 +71,7 @@ else:
     goals_top = np.vstack([goals_top_x, goals_top_y, np.full(N, -np.pi/2)])
 
 # ----- Random unique assignment of goals to robots -----
-rng = np.random.default_rng(42)   # Reproducibility
+rng = np.random.default_rng(1)   # Reproducibility
 perm = rng.permutation(N)
 goal_points = goals_top[:, perm]    # robot i -> column i of goal_points
 
@@ -111,7 +111,7 @@ safety_radius_view = 0.15
 safety_radius_marker_size = determine_marker_size(r,safety_radius_view) # Will scale the plotted markers to be the diameter of provided argument (in meters)
 font_height_meters = 0.2
 font_height_points = determine_font_size(r,font_height_meters) # Will scale the plotted font height to that of the provided argument (in meters)
-obs_r = 0.2
+obs_r = 0.17
 obs_r_marker_size = determine_marker_size(r,obs_r) # Will scale the plotted markers to be the diameter of provided argument (in meters)
 
 # Create single integrator position controller
@@ -186,8 +186,8 @@ goal_markers = [r.axes.scatter(goal_points[0,ii], goal_points[1,ii], s=marker_si
 for ii in range(goal_points.shape[1])]
 
 # Test 
-obstacle_1 = r.axes.scatter(-0.6, -0.2, s=obs_r_marker_size, marker='o', facecolors=[133/255, 116/255, 55/255],edgecolors='none',linewidth=line_width,zorder=-3)
-obstacle_2 = r.axes.scatter(0.6, -0.2, s=obs_r_marker_size, marker='o', facecolors=[133/255, 116/255, 55/255],edgecolors='none',linewidth=line_width,zorder=-3)
+obstacle_1 = r.axes.scatter(-0.8, -0.2, s=obs_r_marker_size, marker='o', facecolors=[133/255, 116/255, 55/255],edgecolors='none',linewidth=line_width,zorder=-3)
+obstacle_2 = r.axes.scatter(0.8, -0.2, s=obs_r_marker_size, marker='o', facecolors=[133/255, 116/255, 55/255],edgecolors='none',linewidth=line_width,zorder=-3)
 
 
 r.step()
@@ -333,7 +333,7 @@ while(1):
         # si_barrier_cert_tv = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a,safety_b=b)
         dxi_tv = si_barrier_cert_tv(dxi, x_si, thetas)  
         dxu_tv = si_to_uni_dyn(dxi_tv, x)      
-        # dxu = dxu_tv
+        dxu = dxu_tv
         dxu = dxu_ellip
 
         norm_dxi_tv = np.linalg.norm(dxi_tv,ord=2)

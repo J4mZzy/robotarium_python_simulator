@@ -82,65 +82,6 @@ CBF_n = 2 # how many CBFs we are using
 si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=10,safety_radius=radius)
 si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a,safety_b=b)
 
-############################# Pre construction for time-varying CBFs ###########################################
-# W1 = np.linspace(1.0, 0.0, 11)
-# W  = np.column_stack([W1, 1.0 - W1])  # shape (11, 2)
-
-# def closest_weight_index(Delta):
-#     """Return idx ∈ [0..10] for the closest (w1,w2) on 0.1 grid, enforcing x+y=1."""
-#     d = np.asarray(Delta, dtype=float)
-#     s = d.sum()
-#     if s != 0.0:
-#         d = d / s                  # normalize minor drift
-#     d = np.clip(d, 0.0, 1.0)
-#     # index 0 → w1=1.0; index 10 → w1=0.0
-#     return int(np.clip(np.round((1.0 - d[0]) * 10.0), 0, 10))
-
-# # Discretize CBFs to create a list with a resolution of 0.1
-# def build_certs_for_shape(target_shape, *, barrier_gain, radius, a, b):
-#     """Precreate 11 certificate functions for one shape."""
-#     certs = []
-#     for w1 in W1:
-#         cert = create_single_integrator_barrier_certificate_time_varying(
-#             [float(w1), 1.0 - float(w1)], T=1, eta= np.sqrt(2)/1*1/3,
-#             target_shape=target_shape,
-#             barrier_gain=barrier_gain,
-#             safety_radius=radius,
-#             safety_a=a, safety_b=b
-#         )
-#         certs.append(cert)
-#     return certs
-
-# # Precompute once (so the loop is just an index + lookup)
-# certs_by_shape = {
-#     1: build_certs_for_shape(1, barrier_gain=1, radius=radius, a=a, b=b),
-#     2: build_certs_for_shape(2, barrier_gain=1, radius=radius, a=a, b=b),
-# }
-
-# def closest_weight_index(Delta):
-#     d = np.asarray(Delta, dtype=float)
-#     s = d.sum()
-#     if s != 0.0:
-#         d = d / s  # normalize if there's tiny drift
-#     d = np.clip(d, 0.0, 1.0)
-#     # Because candidates are multiples of 0.1 on x, nearest is just rounding x to tenths:
-#     # Map x ∈ [0,1] to index 0..10 where index 0 → w1=1.0, index 10 → w1=0.0
-#     idx = int(np.floor((1.0 - d[0]) * 10.0 + 0.5))    # robust "round to nearest"
-#     idx = int(np.clip(idx, 0, 10))
-#     return idx
-
-# def pick_cert_for_Delta(Delta, target_shape):
-#     """
-#     Returns:
-#       cert  : the precomputed barrier certificate function
-#       idx   : the chosen index
-#       wpair : the chosen (w1, w2)
-#     """
-#     idx = closest_weight_index(Delta)
-#     cert_list = certs_by_shape[target_shape]
-#     print(idx, W[idx])
-#     return cert_list[idx], idx, W[idx]
-
 t = 0 
 
 #################################################################################################################
@@ -331,7 +272,7 @@ while(1):
         # si_barrier_cert_tv, idx_sel, (w1_sel, w2_sel) = pick_cert_for_Delta(Delta_cur, target_shape)
         si_barrier_cert_tv = create_single_integrator_barrier_certificate_time_varying(Delta=Delta,lamb=lamb,target_shape=target_shape,t=t
                                                                                        ,barrier_gain=10,safety_radius=radius
-                                                                                       ,safety_a=a,safety_b=b,a_cur=a_cur,b_cur=b_cur)  
+                                                                                       ,safety_a=a,safety_b=b)  
 
         # si_barrier_cert_tv = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a,safety_b=b)
         dxi_tv = si_barrier_cert_tv(dxi, x_si, thetas)  
