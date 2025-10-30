@@ -10,10 +10,13 @@ norms = np.load("u_norms.npy")
 # Extract the circular and elliptical norms
 norm_dxi_cir = norms[:, 0]  # First column
 norm_dxi_ellip = norms[:, 1]  # Second column
-norm_varying = np.max(np.array([norm_dxi_cir, norm_dxi_ellip]), axis=0)
+norm_varying = norms[:, 2] # Third column
+#np.max(np.array([norm_dxi_cir, norm_dxi_ellip]), axis=0)
+############ Add other shapes later ########################
 
 # Generate time indices (assuming sequential iterations)
 iterations = np.arange(len(norm_dxi_cir))
+# print(iterations)
 
 # Set global font to Times New Roman and enable LaTeX
 plt.rcParams['font.family'] = 'Times New Roman'

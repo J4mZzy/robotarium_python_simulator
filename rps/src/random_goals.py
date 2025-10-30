@@ -5,143 +5,88 @@ from rps.utilities.misc import *
 from rps.utilities.controllers import *
 
 import numpy as np
-from matplotlib.patches import Ellipse
+from matplotlib.patches import Ellipse,Circle
 import matplotlib.pyplot as plt
 import time
 
-'''This code is for the multi-robot parallel swapping simulations/experiments'''
-'''Not used for paper revision'''
+'''This code is for the multi-robot random assignment simulations/experiments'''
 
-# The robots will never reach their goal points so set iteration number (not used here)
+# The robots will never reach their goal points so set iteration number (not used here, but if deadlock happens we can make the program stop in short time)
 iterations = 600
 
-## The areana is bounded between x \in (-1.6,1.6)  y\in (-1,1) 
+## The arena is bounded between x \in (-1.6,1.6)  y\in (-1,1) 
 
 # Number of robots
 N = 16 # 2,4,8,11,16,20
 
-#############################################################################################
-rect_width = 1.6  # Width of the rectangle
-rect_height = 1.2  # Height of the rectangle
+# Layout params
+rect_width   = 2.5
+rect_height  = 1.6
+margin_x     = 0.15         # keep a small margin from left/right edges
+two_row_thresh = 8          # switch to two rows when N >= 8
+row_gap      = 0.30         # vertical gap between rows on a side
 
-# Initialize positions
-initial_x = np.zeros(N)
-initial_y = np.zeros(N)
-initial_heading = np.zeros(N)
+x_left  = -rect_width/2  + margin_x
+x_right =  rect_width/2  - margin_x
 
-# Cases for different number of robots 
-if N == 2:
-    # For the two-robot case
-    initial_x[0] = -rect_width / 2  # Left side x-coordinate
-    initial_y[0] = 0  # Centered vertically
-    initial_heading[0] = 0  # Facing right
+def row_x(n):
+    return np.linspace(x_left, x_right, n) if n > 0 else np.array([])
 
-    initial_x[1] = rect_width / 2  # Right side x-coordinate
-    initial_y[1] = 0  # Centered vertically
-    initial_heading[1] = np.pi  # Facing left
-elif N>=10 and np.mod(N,2)==0:
-    # For two columns on each side
-    spacing_x = rect_width / 4  # Horizontal spacing between columns
-    spacing_y = rect_height / (N // 4 - 1)  # Vertical spacing between robots in each column
+# ----- INITIAL CONDITIONS: line up at the BOTTOM, facing UP (+y) -----
+if N < two_row_thresh:
+    # Single row at the bottom
+    initial_x = row_x(N)
+    initial_y = np.full(N, -rect_height/2)
+    initial_heading = np.full(N, np.pi/2)     # face up
 
-    # Left side (robots facing right)
-    for i in range(N // 4):
-        initial_x[i] = -rect_width / 2  # Left column x-coordinate
-        initial_y[i] = rect_height / 2 - i * spacing_y  # Distribute vertically
-        initial_heading[i] = 0  # Facing right
+    initial_conditions = np.vstack([initial_x, initial_y, initial_heading])
 
-        j = i + N // 4
-        initial_x[j] = -rect_width / 2 + spacing_x  # Right column x-coordinate (on the left side)
-        initial_y[j] = rect_height / 2 - i * spacing_y  # Same vertical position
-        initial_heading[j] = 0  # Facing right
+    # GOALS: single row at the top, facing DOWN (-y)
+    goals_top = np.vstack([
+        row_x(N),
+        np.full(N,  rect_height/2),
+        np.full(N, -np.pi/2)                  # face down
+    ])
+else:
+    # Two rows per side
+    n0 = (N + 1) // 2   # first row count
+    n1 = N // 2         # second row count
 
-    # Right side (robots facing left)
-    for i in range(N // 4):
-        k = i + N // 2
-        initial_x[k] = rect_width / 2  # Left column x-coordinate (on the right side)
-        initial_y[k] = rect_height / 2 - i * spacing_y  # Distribute vertically
-        initial_heading[k] = np.pi  # Facing left
+    # Bottom rows (initial positions), both face UP
+    yB0 = -rect_height/2
+    yB1 = yB0 + row_gap
 
-        l = k + N // 4
-        initial_x[l] = rect_width / 2 - spacing_x  # Right column x-coordinate (on the right side)
-        initial_y[l] = rect_height / 2 - i * spacing_y  # Same vertical position
-        initial_heading[l] = np.pi  # Facing left
-elif  N<=10 and np.mod(N,2)==0:
-    # Single column logic for N = 4,8
-    spacing = rect_height / (N // 2 - 1)  # Vertical spacing between robots on each side
+    initial_x = np.concatenate([row_x(n0), row_x(n1)])
+    initial_y = np.concatenate([np.full(n0, yB0), np.full(n1, yB1)])-0.1
+    initial_heading = np.full(N, np.pi/2)
 
-    # Left side (robots facing right)
-    for i in range(N // 2):
-        initial_x[i] = -rect_width / 2  # Left side x-coordinate
-        initial_y[i] = rect_height / 2 - i * spacing  # Distribute vertically
-        initial_heading[i] = 0  # Facing right
+    initial_conditions = np.vstack([initial_x, initial_y, initial_heading])
 
-    # Right side (robots facing left)
-    for i in range(N // 2, N):
-        initial_x[i] = rect_width / 2  # Right side x-coordinate
-        initial_y[i] = rect_height / 2 - (i - N // 2) * spacing  # Distribute vertically
-        initial_heading[i] = np.pi  # Facing left
-elif np.mod(N, 2) != 0:
-    # Define vertical spacing for each side (left and right columns)
-    left_column_robots = N // 2 + 1  # Left column gets one more robot if N is odd
-    right_column_robots = N // 2  # Right column
+    # Top rows (goals), both face down
+    yT0 =  rect_height/2 - 0.1
+    yT1 =  yT0 - row_gap
 
-    rect_height = rect_height*1.4
+    goals_top_x = np.concatenate([row_x(n0), row_x(n1)])
+    goals_top_y = np.concatenate([np.full(n0, yT0), np.full(n1, yT1)])
+    goals_top = np.vstack([goals_top_x, goals_top_y, np.full(N, -np.pi/2)])
 
-    spacing_left = rect_height / left_column_robots 
-    spacing_left = spacing_left + 0.05 # Vertical spacing for left column
-    spacing_right = rect_height / right_column_robots if right_column_robots > 0 else spacing_left  # Avoid division by zero
+# ----- Random unique assignment of goals to robots -----
+rng = np.random.default_rng(42)   # Reproducibility
+perm = rng.permutation(N)
+goal_points = goals_top[:, perm]    # robot i -> column i of goal_points
 
-    # Staggered left-right distribution
-    for i in range(N):
-        if i % 2 == 0:  # Even index: Left column
-            initial_x[i] = -rect_width / 2  # Left side x-coordinate
-            initial_heading[i] = 0  # Facing right
-            # Place robots in left column with even spacing
-            initial_y[i] = rect_height / 2 - ((i // 2) * spacing_left)
-        else:  # Odd index: Right column
-            initial_x[i] = rect_width / 2  # Right side x-coordinate
-            initial_heading[i] = np.pi  # Facing left
-            # Stagger placement for the right column by shifting down slightly
-            initial_y[i] = rect_height / 2 - ((i // 2) * spacing_right) - (spacing_left / 2)
+# ----- Robotarium instantiation -----
+r = robotarium.Robotarium(
+    number_of_robots=N,
+    show_figure=True,
+    sim_in_real_time=True,
+    initial_conditions=initial_conditions
+)
 
 
-# Combine initial positions into the required format (x, y, theta)
-initial_conditions = np.array([initial_x, initial_y, initial_heading])
+## Plotting Parameters
 
-# Instantiate Robotarium object
-r = robotarium.Robotarium(number_of_robots=N, show_figure=True, sim_in_real_time=True, initial_conditions=initial_conditions)
-
-# Define goal points for swapping behavior
-goal_points = np.array([initial_x, initial_y, initial_heading])  # Start by setting goal points to current positions
-goal_points[0, :] = -initial_conditions[0,:] 
-
-#################################################################
-# radius of the circle robots are forming
-circle_radius = 0.9
-
-# Calculate initial positions in a circular formation
-theta = np.linspace(0, 2 * np.pi, N, endpoint=False)  # Angles for each robot
-initial_x = circle_radius * np.cos(theta)  # X coordinates
-initial_y = circle_radius * np.sin(theta)  # Y coordinates
-
-# Headings (facing inward)
-initial_heading = theta + np.pi  # Heading towards the center (add pi to point inward)
-
-# Combine initial positions into the required format (x, y, theta)
-initial_conditions = np.array([initial_x, initial_y, initial_heading])
-# Instantiate Robotarium object
-r = robotarium.Robotarium(number_of_robots=N, show_figure=True, sim_in_real_time=True, initial_conditions=initial_conditions)
-# Define goal points: for a swapping behavior, we can simply offset the current positions
-goal_points = np.array([initial_x, initial_y, theta])  # Start by setting goal points to the current positions
-goal_points[0, :] = -initial_conditions[0,:] 
-goal_points[1, :] = -initial_conditions[1,:]
-##################################################################
-
-
-# Plotting Parameters
-
-# #GT color scheme
+#GT color scheme
 # Gold = np.array([179,163,105])/255
 # Navy = np.array([0,48,87])/255
 # piMile= np.array([214,219,212])/255
@@ -150,6 +95,7 @@ goal_points[1, :] = -initial_conditions[1,:]
 
 
 # CM = np.random.rand(N,3) # Random Colors
+
 # Use a predefined colormap from Matplotlib
 cmap = plt.get_cmap("tab20")  # You can try "Set3", "tab10", or any other colormap
 
@@ -159,12 +105,14 @@ CM = cmap(np.linspace(0, 1, N))  # Generate N colors evenly spaced within the co
 ##################################### For Robotarium##################################
 # Set CM to be all black for N agents (better visibility)
 # CM = np.array([[0, 0, 0]] * N)
-
+ 
 # Default Barrier Parameters (for visualization) 
-safety_radius = 0.15
-safety_radius_marker_size = determine_marker_size(r,safety_radius) # Will scale the plotted markers to be the diameter of provided argument (in meters)
+safety_radius_view = 0.15
+safety_radius_marker_size = determine_marker_size(r,safety_radius_view) # Will scale the plotted markers to be the diameter of provided argument (in meters)
 font_height_meters = 0.2
 font_height_points = determine_font_size(r,font_height_meters) # Will scale the plotted font height to that of the provided argument (in meters)
+obs_r = 0.2
+obs_r_marker_size = determine_marker_size(r,obs_r) # Will scale the plotted markers to be the diameter of provided argument (in meters)
 
 # Create single integrator position controller
 si_position_controller = create_si_position_controller()
@@ -173,18 +121,21 @@ si_position_controller = create_si_position_controller()
 radius = 0.25
 a = 0.25
 b = 0.20
-w = 0.40
 
 ############################################ CBF Library #######################################################
 # We're working in single-integrator dynamics, and we don't want the robots
 # to collide.  Thus, we're going to use barrier certificates (in a centrialized way)
 CBF_n = 2 # how many CBFs we are using 
-si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=10,safety_radius=radius)
-si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a,safety_b=b)
-si_barrier_cert_sqaure = create_single_integrator_barrier_certificate_square(barrier_gain=1,safety_width=w,norm=3)
-si_barrier_cert_tri = create_single_integrator_barrier_certificate_triangle(barrier_gain=1)
+# si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=10,safety_radius=radius)
+# si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a,safety_b=b)
 
-######## remember to change this to 2 when running ellipse ######################
+si_barrier_cert_cir = create_single_integrator_barrier_certificate_with_obstacles(barrier_gain=10,safety_radius=radius)
+si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse_with_obstacles(barrier_gain=1,safety_a=a,safety_b=b)
+
+############################# Pre construction for time-varying CBFs ###########################################
+
+t = 0 
+
 ######## Remember to change this to 1 when running ellipse ######################
 previous_target_shape = 1 # initialize the shape flag as 1 (1 is circle and 2 is ellipse)
 target_array = np.zeros(CBF_n)
@@ -197,7 +148,7 @@ Delta = 0 # Delta
 
 lamb_list = []
 Delta_list = []
-
+target_list = []
 
 # Initialize the transition variables
 transition_in_progress = False
@@ -217,22 +168,27 @@ L = 0.05
 
 # Create Goal Point Markers
 goal_marker_size_m = 0.1
-font_size = determine_font_size(r,0.1*0.8)
-line_width = 3
-
+font_size = determine_font_size(r,0.1)
+line_width = 5
 marker_size_goal = determine_marker_size(r,goal_marker_size_m)
 
 #Text with goal identification
 goal_caption = ['G{0}'.format(ii) for ii in range(goal_points.shape[1])]
-#Arrow for desired orientation
+
+#Arrow for desired orientation (optional)
 # goal_orientation_arrows = [r.axes.arrow(goal_points[0,ii], goal_points[1,ii], goal_marker_size_m*np.cos(goal_points[2,ii]), goal_marker_size_m*np.sin(goal_points[2,ii]), width = 0.01, length_includes_head=True, color = CM[ii,:], zorder=-2)
 # for ii in range(goal_points.shape[1])]
+
 #Plot text for caption
 goal_points_text = [r.axes.text(goal_points[0,ii], goal_points[1,ii], goal_caption[ii], fontsize=font_size, color='k',fontweight='bold',horizontalalignment='center',verticalalignment='center',zorder=-3)
 for ii in range(goal_points.shape[1])]
 goal_markers = [r.axes.scatter(goal_points[0,ii], goal_points[1,ii], s=marker_size_goal, marker='s', facecolors='none',edgecolors=CM[ii,:],linewidth=line_width,zorder=-3)
 for ii in range(goal_points.shape[1])]
-# rectangle_box = r.axes.scatter(0, 0, s=marker_size_goal*50, marker='s', facecolors='none',edgecolors=(255/255, 0/255, 0/255),linewidth=line_width,zorder=-3)
+
+# Test 
+obstacle_1 = r.axes.scatter(-0.6, -0.2, s=obs_r_marker_size, marker='o', facecolors=[133/255, 116/255, 55/255],edgecolors='none',linewidth=line_width,zorder=-3)
+obstacle_2 = r.axes.scatter(0.6, -0.2, s=obs_r_marker_size, marker='o', facecolors=[133/255, 116/255, 55/255],edgecolors='none',linewidth=line_width,zorder=-3)
+
 
 r.step()
 # r.step_no_error() (for robotarium with 20 agents)
@@ -253,12 +209,9 @@ start_time = None # timer variable in loop
 dt = None
 prev_time = None
 
-t = 0
-
 # While the goal is not reached
 while(1):
     # for i in range(iterations):
-
         # Get poses of agents
         x = r.get_poses()
 
@@ -274,27 +227,20 @@ while(1):
         # Use a position controller to drive to the goal position
         dxi = si_position_controller(x_si,goal_points[:2,:])
 
-        # Use the barrier certificates to make sure that the agents don't collide
-
         ########################### barrier type ######################################
         # Use the barrier certificates to make sure that the agents don't collide
+        # Generating safe inputs
+
         dxi_cir = si_barrier_cert_cir(dxi, x_si)                # the first barrier being circular
-        # dxi_cir = si_barrier_cert_ellip(dxi, x_si, thetas)     # the first barrier being elliptical 
-        dxi_ellip = si_barrier_cert_ellip(dxi, x_si, thetas)     # the second barrier being elliptical
+        # dxi_cir = si_barrier_cert_ellip(dxi, x_si,thetas)     # the first barrier being elliptical 
+        dxi_ellip = si_barrier_cert_ellip(dxi, x_si,thetas)     # the second barrier being elliptical
         # dxi_ellip = si_barrier_cert_cir(dxi, x_si)            # the second barrier being circular
-
-
-        dxi_square = si_barrier_cert_sqaure(dxi, x_si, thetas)                # square
-        dxi_tri = si_barrier_cert_tri(dxi, x_si, thetas)
-
-        ###############################################################################
-
+        
+        
         ############################# selection ########################################
         # Use the second single-integrator-to-unicycle mapping to map to unicycle
         dxu_cir = si_to_uni_dyn(dxi_cir, x) # circular
         dxu_ellip = si_to_uni_dyn(dxi_ellip, x) # elliptical
-        dxu_sqaure = si_to_uni_dyn(dxi_square, x) # square
-        dxu_tri = si_to_uni_dyn(dxi_tri, x) # elliptical
         
         # Default shape
         # dxu = dxu_cir
@@ -371,6 +317,7 @@ while(1):
 
         lamb_list.append(lamb.copy())
         Delta_list.append(Delta)
+        target_list.append(target_shape)
 
         ##########################################################################################
         # print("a_cur:",a_cur)
@@ -379,19 +326,20 @@ while(1):
         ## Delta cur is used to get the current convex combination CBF, and Delta target is used to calculate h3 (time varying CBF)!
 
         # si_barrier_cert_tv, idx_sel, (w1_sel, w2_sel) = pick_cert_for_Delta(Delta_cur, target_shape)
-        si_barrier_cert_tv = create_single_integrator_barrier_certificate_time_varying(Delta=Delta,lamb=lamb,target_shape=target_shape,t=t
-                                                                                       ,barrier_gain=1,safety_radius=radius
-                                                                                       ,safety_a=a,safety_b=b,a_cur=a_cur,b_cur=b_cur)  
+        si_barrier_cert_tv = create_single_integrator_barrier_certificate_time_varying_with_obstacles(Delta=Delta,lamb=lamb,target_shape=target_shape,t=t
+                                                                                                      ,barrier_gain=10,safety_radius=radius
+                                                                                                      ,safety_a=a,safety_b=b)  
 
         # si_barrier_cert_tv = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a,safety_b=b)
         dxi_tv = si_barrier_cert_tv(dxi, x_si, thetas)  
         dxu_tv = si_to_uni_dyn(dxi_tv, x)      
         # dxu = dxu_tv
-        dxu = dxu_tri
+        dxu = dxu_ellip
 
         norm_dxi_tv = np.linalg.norm(dxi_tv,ord=2)
         # Append the norms to the lists for post-processing
         norm_dxi_tv_list.append(norm_dxi_tv)
+
 
         ## Delta cur has ([circle,ellipse])
         # Delta_cur = Delta_target # update Delta current     
@@ -427,12 +375,12 @@ while(1):
         
         #########################################################################################
         # Create and add ellipses to the axes
-        # for i in range(N):
-        #     ellipse = Ellipse(xy=(x[0, i] + L * np.cos(x[2, i]), x[1, i] + L * np.sin(x[2, i])),
-        #                     width=a_cur*0.9, height=b_cur*0.9, angle=np.degrees(thetas[i]),
-        #                     facecolor='none', edgecolor=CM[i], linewidth=2)
-        #     r.axes.add_patch(ellipse)
-        #     g_objects.append(ellipse)  # Keep track of the patches       
+        for i in range(N):
+            ellipse = Ellipse(xy=(x[0, i] + L * np.cos(x[2, i]), x[1, i] + L * np.sin(x[2, i])),
+                            width=a_cur*0.9, height=b_cur*0.9, angle=np.degrees(thetas[i]),
+                            facecolor='none', edgecolor=CM[i], linewidth=2)
+            r.axes.add_patch(ellipse)
+            g_objects.append(ellipse)  # Keep track of the patches       
 
         # Set the velocities by mapping the single-integrator inputs to unciycle inputs
         r.set_velocities(np.arange(N), dxu)
@@ -448,8 +396,9 @@ while(1):
 #Call at end of script to print debug information and for your script to run on the Robotarium server properly
 r.call_at_scripts_end()
 
+
 # Convert lists to a single 2D NumPy array
-u_norms_array = np.column_stack((norm_dxi_cir_list, norm_dxi_ellip_list,norm_dxi_tv_list))
+u_norms_array = np.column_stack((norm_dxi_cir_list, norm_dxi_ellip_list, norm_dxi_tv_list))
 
 #Save Data
 print(time.time() - exp_start_time)
@@ -457,8 +406,9 @@ np.save('trajectories', trajectories)
 np.save("u_norms", u_norms_array)
 np.save("lamb_list", lamb_list)
 np.save("Delta_list", Delta_list)
+np.save("target_list", target_list)
 
-# plot block
+## plot block
 
 ## Plotting the position trajectories
 # print("Preparing to plot trajectories...")
@@ -467,12 +417,13 @@ np.save("Delta_list", Delta_list)
 ## Enable LaTeX plotting
 # plt.rc('text', usetex=True)
 
-# plt.figure(figsize=(10, 8))
+# plt.figure(figsize=(8, 8))
 # for i in range(N):
 #     trajectory = np.array(trajectories[i])
 #     plt.plot(trajectory[:, 0], trajectory[:, 1], label=f'Robot {i + 1}', color=CM[i],linewidth=3)
 
 # plt.scatter(goal_points[0, :], goal_points[1, :], color=CM, marker='*', s=200, label='Goals',linewidth=3)
+
 ## Add 10 cm (0.1 m) dashed circles around each goal point
 # for i in range(goal_points.shape[1]):  # Loop over goal points
 #     circle = plt.Circle((goal_points[0, i], goal_points[1, i]), 0.1, color=CM[i], fill=False, linestyle='dashed', linewidth=3)
@@ -491,3 +442,4 @@ np.save("Delta_list", Delta_list)
 # plt.savefig("plot.png", dpi=600)
 # # plt.show(block=True)  # Keep the plot window open
 # print("Plotting complete.")
+

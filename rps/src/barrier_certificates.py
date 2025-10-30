@@ -205,14 +205,14 @@ def create_single_integrator_barrier_certificate_ellipse_decentralized(agent_ind
                     # theta[agent_index] = theta[agent_index] + np.pi/4
                 A[count, 0] = -2 * ((error[0])*np.cos(theta[agent_index])+(error[1])*np.sin(theta[agent_index]))*np.cos(theta[agent_index])/ safety_a**2 - 2 * ((error[0])*np.sin(theta[agent_index])-(error[1])*np.cos(theta[agent_index]))*np.sin(theta[agent_index])/ safety_b**2
                 A[count, 1] = -2 * ((error[0])*np.cos(theta[agent_index])+(error[1])*np.sin(theta[agent_index]))*np.sin(theta[agent_index])/ safety_a**2 - 2 * ((error[0])*np.sin(theta[agent_index])-(error[1])*np.cos(theta[agent_index]))*-np.cos(theta[agent_index])/ safety_b**2
-                A[count, 2*j] = 2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_b**2
-                A[count, 2*j+1] = 2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.sin(theta[j])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*-np.cos(theta[j])/ safety_b**2
+                A[count, 2*j] = 2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.cos(theta[i])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*np.sin(theta[i])/ safety_b**2
+                A[count, 2*j+1] = 2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.sin(theta[i])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*-np.cos(theta[i])/ safety_b**2
                 # else:
                 #     # theta[agent_index] = theta[agent_index] - np.pi/4
-                #     A[count, 0] = -2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_b**2 - 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_a**2
-                #     A[count, 1] = -2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*-np.sin(theta[j])/ safety_b**2 - 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.cos(theta[j])/ safety_a**2
-                #     A[count, 2*j] = 2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_b**2 + 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_a**2
-                #     A[count, 2*j+1] = 2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*-np.sin(theta[j])/ safety_b**2 + 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.cos(theta[j])/ safety_a**2
+                #     A[count, 0] = -2 * ((error[0])*np.cos(theta[i])-(error[1])*np.sin(theta[i]))*np.cos(theta[i])/ safety_b**2 - 2 * ((error[0])*np.sin(theta[i])+(error[1])*np.cos(theta[i]))*np.sin(theta[i])/ safety_a**2
+                #     A[count, 1] = -2 * ((error[0])*np.cos(theta[i])-(error[1])*np.sin(theta[i]))*-np.sin(theta[i])/ safety_b**2 - 2 * ((error[0])*np.sin(theta[i])+(error[1])*np.cos(theta[i]))*np.cos(theta[i])/ safety_a**2
+                #     A[count, 2*j] = 2 * ((error[0])*np.cos(theta[i])-(error[1])*np.sin(theta[i]))*np.cos(theta[i])/ safety_b**2 + 2 * ((error[0])*np.sin(theta[i])+(error[1])*np.cos(theta[i]))*np.sin(theta[i])/ safety_a**2
+                #     A[count, 2*j+1] = 2 * ((error[0])*np.cos(theta[i])-(error[1])*np.sin(theta[i]))*-np.sin(theta[i])/ safety_b**2 + 2 * ((error[0])*np.sin(theta[i])+(error[1])*np.cos(theta[i]))*np.cos(theta[i])/ safety_a**2
 
                 b[count] = barrier_gain * h**3
                 count += 1
@@ -255,7 +255,7 @@ def create_single_integrator_barrier_certificate_ellipse(barrier_gain=100, safet
     assert safety_a > 0 and safety_b > 0, "The semi-major and semi-minor axes must be positive. Received a: %r, b: %r." % (safety_a, safety_b)
     assert magnitude_limit > 0, "The maximum linear velocity of the robot must be positive. Received %r." % magnitude_limit
 
-    def f(dxi, x,theta):
+    def f(dxi, x, theta):
         # Check user input types
         assert isinstance(dxi, np.ndarray), "The single-integrator robot velocity command must be a numpy array. Received type %r." % type(dxi).__name__
         assert isinstance(x, np.ndarray), "The robot states must be a numpy array. Received type %r." % type(x).__name__
@@ -279,21 +279,29 @@ def create_single_integrator_barrier_certificate_ellipse(barrier_gain=100, safet
         for i in range(N-1):
             for j in range(i+1, N):
                 error = x[:, i] - x[:, j]
-                error_1 = (error[0]*np.cos(theta[j])+error[1]*np.sin(theta[j])) / safety_a 
-                error_2 = (error[0]*np.sin(theta[j])-error[1]*np.cos(theta[j])) / safety_b
-                h = error_1**2 + error_2**2 - 1    
 
+                ## Rotation 
+                error_1 = (error[0]*np.cos(theta[i])+error[1]*np.sin(theta[i])) 
+                error_2 = (error[0]*np.sin(theta[i])-error[1]*np.cos(theta[i])) 
+                h = (error_1/safety_a )**2 + (error_2/safety_b)**2 - 1    
+
+                # h_ellip dot
+                # h_ellip_dot1 = 2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.cos(theta[i])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*np.sin(theta[i])/ safety_b**2
+                # h_ellip_dot2 = 2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.sin(theta[i])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*-np.cos(theta[i])/ safety_b**2
+
+                h_ellip_dot1 = 2 * error_1 * np.cos(theta[i]) / safety_a**2 + 2 * error_2 * np.sin(theta[i]) / safety_b**2
+                h_ellip_dot2 = 2 * error_1 * np.sin(theta[i]) / safety_a**2 + 2 * error_2 * -np.cos(theta[i]) / safety_b**2
 
                 # if np.mod(i,2) == 0:
-                A[count, 2*i] = -2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_a**2 - 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_b**2
-                A[count, 2*i+1] = -2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.sin(theta[j])/ safety_a**2 - 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*-np.cos(theta[j])/ safety_b**2
-                A[count, 2*j] = 2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_b**2
-                A[count, 2*j+1] = 2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.sin(theta[j])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*-np.cos(theta[j])/ safety_b**2
+                A[count, 2*i] = -h_ellip_dot1
+                A[count, 2*i+1] = -h_ellip_dot2
+                A[count, 2*j] = h_ellip_dot1
+                A[count, 2*j+1] = h_ellip_dot2
                 # else:
-                #     A[count, 2*i] = -2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_b**2 - 2 * ((error[0]-safety_a)*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_a**2
-                #     A[count, 2*i+1] = -2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*-np.sin(theta[j])/ safety_b**2 - 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.cos(theta[j])/ safety_a**2
-                #     A[count, 2*j] = 2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_b**2 + 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_a**2
-                #     A[count, 2*j+1] = 2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*-np.sin(theta[j])/ safety_b**2 + 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.cos(theta[j])/ safety_a**2
+                #     A[count, 2*i] = -2 * ((error[0])*np.cos(theta[i])-(error[1])*np.sin(theta[i]))*np.cos(theta[i])/ safety_b**2 - 2 * ((error[0]-safety_a)*np.sin(theta[i])+(error[1])*np.cos(theta[i]))*np.sin(theta[i])/ safety_a**2
+                #     A[count, 2*i+1] = -2 * ((error[0])*np.cos(theta[i])-(error[1])*np.sin(theta[i]))*-np.sin(theta[i])/ safety_b**2 - 2 * ((error[0])*np.sin(theta[i])+(error[1])*np.cos(theta[i]))*np.cos(theta[i])/ safety_a**2
+                #     A[count, 2*j] = 2 * ((error[0])*np.cos(theta[i])-(error[1])*np.sin(theta[i]))*np.cos(theta[i])/ safety_b**2 + 2 * ((error[0])*np.sin(theta[i])+(error[1])*np.cos(theta[i]))*np.sin(theta[i])/ safety_a**2
+                #     A[count, 2*j+1] = 2 * ((error[0])*np.cos(theta[i])-(error[1])*np.sin(theta[i]))*-np.sin(theta[i])/ safety_b**2 + 2 * ((error[0])*np.sin(theta[i])+(error[1])*np.cos(theta[i]))*np.cos(theta[i])/ safety_a**2
 
                 b[count] = barrier_gain * h**3
                 count += 1
@@ -310,8 +318,183 @@ def create_single_integrator_barrier_certificate_ellipse(barrier_gain=100, safet
 
     return f
 
+def create_single_integrator_barrier_certificate_square(barrier_gain=100, safety_width=0.34, norm = 3, magnitude_limit=0.2):
+    """Creates a barrier certificate for a single-integrator system.  This function
+    returns another function for optimization reasons.
 
-def create_single_integrator_barrier_certificate_time_varying(Delta, lamb,target_shape, T, safety_radius=0.17, barrier_gain=100, safety_a=0.17, safety_b=0.12, a_cur =0.17, b_cur = 0.12, magnitude_limit=0.2):
+    barrier_gain: double (controls how quickly agents can approach each other.  lower = slower)
+    safety_radius: double (how far apart the agents will stay)
+    magnitude_limit: how fast the robot can move linearly.
+
+    -> function (the barrier certificate function)
+    """
+
+    #Check user input types
+    assert isinstance(barrier_gain, (int, float)), "In the function create_single_integrator_barrier_certificate, the barrier gain (barrier_gain) must be an integer or float. Recieved type %r." % type(barrier_gain).__name__
+    assert isinstance(safety_width, (int, float)), "In the function create_single_integrator_barrier_certificate, the safe distance between robots (safety_radius) must be an integer or float. Recieved type %r." % type(safety_width).__name__
+    assert isinstance(magnitude_limit, (int, float)), "In the function create_single_integrator_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be an integer or float. Recieved type %r." % type(magnitude_limit).__name__
+
+    #Check user input ranges/sizes
+    assert barrier_gain > 0, "In the function create_single_integrator_barrier_certificate, the barrier gain (barrier_gain) must be positive. Recieved %r." % barrier_gain
+    assert safety_width >= 0.24, "In the function create_single_integrator_barrier_certificate, the safe distance between robots (safety_radius) must be greater than or equal to the diameter of the robot (0.12m) plus the distance to the look ahead point used in the diffeomorphism if that is being used. Recieved %r." % safety_width
+    assert magnitude_limit > 0, "In the function create_single_integrator_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be positive. Recieved %r." % magnitude_limit
+    assert magnitude_limit <= 0.2, "In the function create_single_integrator_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be less than the max speed of the robot (0.2m/s). Recieved %r." % magnitude_limit
+
+
+    def f(dxi, x, theta):
+        #Check user input types
+        assert isinstance(dxi, np.ndarray), "In the function created by the create_single_integrator_barrier_certificate function, the single-integrator robot velocity command (dxi) must be a numpy array. Recieved type %r." % type(dxi).__name__
+        assert isinstance(x, np.ndarray), "In the function created by the create_single_integrator_barrier_certificate function, the robot states (x) must be a numpy array. Recieved type %r." % type(x).__name__
+
+        #Check user input ranges/sizes
+        assert x.shape[0] == 2, "In the function created by the create_single_integrator_barrier_certificate function, the dimension of the single integrator robot states (x) must be 2 ([x;y]). Recieved dimension %r." % x.shape[0]
+        assert dxi.shape[0] == 2, "In the function created by the create_single_integrator_barrier_certificate function, the dimension of the robot single integrator velocity command (dxi) must be 2 ([x_dot;y_dot]). Recieved dimension %r." % dxi.shape[0]
+        assert x.shape[1] == dxi.shape[1], "In the function created by the create_single_integrator_barrier_certificate function, the number of robot states (x) must be equal to the number of robot single integrator velocity commands (dxi). Recieved a current robot pose input array (x) of size %r x %r and single integrator velocity array (dxi) of size %r x %r." % (x.shape[0], x.shape[1], dxi.shape[0], dxi.shape[1])
+
+        
+        # Initialize some variables for computational savings
+        N = dxi.shape[1]
+        num_constraints = int(comb(N, 2))
+        A = np.zeros((num_constraints, 2*N))
+        b = np.zeros(num_constraints)
+        H = sparse(matrix(2*np.identity(2*N)))
+        p = norm
+
+        count = 0
+        #Centralized QP
+        for i in range(N-1):
+            for j in range(i+1, N):
+                error = x[:, i] - x[:, j]
+                ## Rotation
+                error_1 = (error[0]*np.cos(theta[i])+error[1]*np.sin(theta[i])) 
+                error_2 = (error[0]*np.sin(theta[i])-error[1]*np.cos(theta[i])) 
+                
+                ## p-norm h = ||R(theta)*x||_p - r
+                h = (np.power(np.power(np.abs(error_1),p) + np.power(np.abs(error_2),p),1/p)) - safety_width/2
+
+                h_square_dot1 = (np.sin(theta[i])*error_2*np.abs(error_2) + np.cos(theta[i])*error_1*np.abs(error_1))/np.power((error_2*error_2*np.abs(error_2) + error_1*error_1*np.abs(error_1)),2/3)
+                h_square_dot2 = (np.sin(theta[i])*error_1*np.abs(error_1) - np.cos(theta[i])*error_2*np.abs(error_2))/np.power((error_1*error_1*np.abs(error_1) + error_2*error_2*np.abs(error_2)),2/3)
+
+                ## p-norm h = ||R(theta)*x||_p - r
+                # h = (np.power(np.power(np.abs(error[0]),p) + np.power(np.abs(error[1]),p),1/p)) - safety_width/2
+
+                # h_square_dot1 = error[0] * np.power(np.abs(error[0]),p-2) / (np.power(np.power(np.abs(error[0]),p) + np.power(np.abs(error[1]),p),(p-1)/p))
+                # h_square_dot2 = error[1] * np.power(np.abs(error[1]),p-2) / (np.power(np.power(np.abs(error[0]),p) + np.power(np.abs(error[1]),p),(p-1)/p))
+
+
+                A[count, 2*i] = -h_square_dot1
+                A[count, 2*i+1] = -h_square_dot2
+                A[count, 2*j] = h_square_dot1
+                A[count, 2*j+1] = h_square_dot2
+
+                b[count] = barrier_gain*np.power(h, 3)
+                count += 1
+
+        # Threshold control inputs before QP
+        norms = np.linalg.norm(dxi, 2, 0)
+        idxs_to_normalize = (norms > magnitude_limit)
+        dxi[:, idxs_to_normalize] *= magnitude_limit/norms[idxs_to_normalize]
+
+        f = -2*np.reshape(dxi, 2*N, order='F')
+        result = qp(H, matrix(f), matrix(A), matrix(b))['x']
+
+        return np.reshape(result, (2, -1), order='F')
+
+    return f
+
+def create_single_integrator_barrier_certificate_triangle(barrier_gain=100, magnitude_limit=0.2):
+    """Creates a barrier certificate for a single-integrator system.  This function
+    returns another function for optimization reasons.
+
+    barrier_gain: double (controls how quickly agents can approach each other.  lower = slower)
+    safety_radius: double (how far apart the agents will stay)
+    magnitude_limit: how fast the robot can move linearly.
+
+    -> function (the barrier certificate function)
+    """
+
+    #Check user input types
+    assert isinstance(barrier_gain, (int, float)), "In the function create_single_integrator_barrier_certificate, the barrier gain (barrier_gain) must be an integer or float. Recieved type %r." % type(barrier_gain).__name__
+    assert isinstance(magnitude_limit, (int, float)), "In the function create_single_integrator_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be an integer or float. Recieved type %r." % type(magnitude_limit).__name__
+
+    #Check user input ranges/sizes
+    assert barrier_gain > 0, "In the function create_single_integrator_barrier_certificate, the barrier gain (barrier_gain) must be positive. Recieved %r." % barrier_gain
+    assert magnitude_limit > 0, "In the function create_single_integrator_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be positive. Recieved %r." % magnitude_limit
+    assert magnitude_limit <= 0.2, "In the function create_single_integrator_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be less than the max speed of the robot (0.2m/s). Recieved %r." % magnitude_limit
+
+
+    def f(dxi, x, theta):
+        #Check user input types
+        assert isinstance(dxi, np.ndarray), "In the function created by the create_single_integrator_barrier_certificate function, the single-integrator robot velocity command (dxi) must be a numpy array. Recieved type %r." % type(dxi).__name__
+        assert isinstance(x, np.ndarray), "In the function created by the create_single_integrator_barrier_certificate function, the robot states (x) must be a numpy array. Recieved type %r." % type(x).__name__
+
+        #Check user input ranges/sizes
+        assert x.shape[0] == 2, "In the function created by the create_single_integrator_barrier_certificate function, the dimension of the single integrator robot states (x) must be 2 ([x;y]). Recieved dimension %r." % x.shape[0]
+        assert dxi.shape[0] == 2, "In the function created by the create_single_integrator_barrier_certificate function, the dimension of the robot single integrator velocity command (dxi) must be 2 ([x_dot;y_dot]). Recieved dimension %r." % dxi.shape[0]
+        assert x.shape[1] == dxi.shape[1], "In the function created by the create_single_integrator_barrier_certificate function, the number of robot states (x) must be equal to the number of robot single integrator velocity commands (dxi). Recieved a current robot pose input array (x) of size %r x %r and single integrator velocity array (dxi) of size %r x %r." % (x.shape[0], x.shape[1], dxi.shape[0], dxi.shape[1])
+
+        
+        # Initialize some variables for computational savings
+        N = dxi.shape[1]
+        num_constraints = int(comb(N, 2))
+        A = np.zeros((num_constraints, 2*N))
+        b = np.zeros(num_constraints)
+        H = sparse(matrix(2*np.identity(2*N)))
+
+        count = 0
+        #Centralized QP
+        for i in range(N-1):
+            for j in range(i+1, N):
+                error = x[:, i] - x[:, j]
+
+                ## Rotation
+                error_1 = (error[0]*np.cos(theta[i])+error[1]*np.sin(theta[i])) 
+                error_2 = (error[0]*np.sin(theta[i])-error[1]*np.cos(theta[i])) 
+
+                h = 3/5 * np.log(np.exp(4*error_1+4*np.sqrt(3)*error_2) + np.exp(-8*error_1) + np.exp(4*error_1-4*np.sqrt(3)*error_2))- 1
+
+                h_tri_dot1 = 12*((np.sqrt(3)*np.sin(theta[i])+np.cos(theta[i]))*np.exp(8*np.sqrt(3)*error_2 + 12*error_1) 
+                              - 2*np.cos(theta[i])*np.exp(4*np.sqrt(3)*error_2)-(np.sqrt(3)*np.sin(theta[i])-np.cos(theta[i]))*np.exp(12*error_1))/ (5*(np.exp(8*np.sqrt(3)*error_2+12*error_1)
+                              + np.exp(4*np.sqrt(3)*error_2) + np.exp(12*error_1)))
+                h_tri_dot2 = 12*((np.sin(theta[i])-np.sqrt(3)*np.cos(theta[i]))*np.exp(8*np.sqrt(3)*error_2 + 12*error_1)
+                              - 2*np.sin(theta[i])*np.exp(4*np.sqrt(3)*error_2)+(np.sin(theta[i])+np.sqrt(3)*np.cos(theta[i]))*np.exp(12*error_1))/ (5*((np.exp(8*np.sqrt(3)*error_2)+1)*np.exp(12*error_1)
+                              + np.exp(4*np.sqrt(3)*error_2)))
+                
+                
+                # x_1 = error[0] 
+                # x_2 = error[1] 
+
+                # h = 0.6 * np.log(np.exp(4*x_1+4*np.sqrt(3)*x_2) + np.exp(-8*x_1) + np.exp(4*x_1-4*np.sqrt(3)*x_2))- 1
+
+                # h_tri_dot1 = 1.2 * ((2*np.exp(8*np.sqrt(3)*x_2) + 2)*np.exp(12*x_1) - 4*np.exp(4*np.sqrt(3)*x_2))/((np.exp(8*np.sqrt(3)*x_2) + 1)*np.exp(12*x_1) + np.exp(4*np.sqrt(3)*x_2))
+                # h_tri_dot2 =  1.2 * 2*np.sqrt(3)*np.exp(12*x_1)*(np.exp(8*np.sqrt(3)*x_2) - 1)/ (np.exp(8*np.sqrt(3)*x_2+12*x_1) + np.exp(4*np.sqrt(3)*x_2) + np.exp(12*x_1))
+
+
+                A[count, 2*i] = -h_tri_dot1
+                A[count, 2*i+1] = -h_tri_dot2
+                A[count, 2*j] = h_tri_dot1
+                A[count, 2*j+1] = h_tri_dot2
+
+                b[count] = barrier_gain*np.power(h, 3)
+                count += 1
+
+        # Threshold control inputs before QP
+        norms = np.linalg.norm(dxi, 2, 0)
+        idxs_to_normalize = (norms > magnitude_limit)
+        dxi[:, idxs_to_normalize] *= magnitude_limit/norms[idxs_to_normalize]
+
+        f = -2*np.reshape(dxi, 2*N, order='F')
+        result = qp(H, matrix(f), matrix(A), matrix(b))['x']
+
+        return np.reshape(result, (2, -1), order='F')
+
+    return f
+
+
+
+
+
+def create_single_integrator_barrier_certificate_time_varying(Delta, lamb,target_shape, t, safety_radius=0.17, barrier_gain=100, safety_a=0.17, safety_b=0.12, a_cur =0.17, b_cur = 0.12, magnitude_limit=0.2):
     """Creates a barrier certificate for a single-integrator system with circle to elliptical time varying safety region.
     
     barrier_gain: double (controls how quickly agents can approach each other. lower = slower)
@@ -351,20 +534,17 @@ def create_single_integrator_barrier_certificate_time_varying(Delta, lamb,target
         H = sparse(matrix(2 * np.identity(2*N)))
 
         # Derivative of Delta
-        if Delta < 1:
-            Delta_dot = 1/T # compute delta dot
-        else:
-            Delta_dot = 0
-
-        # Delta = np.clip(Delta, 0.0, 1.0)
+        ## Constant function 
         # if Delta < 1:
-        #     eps = 1e-3  # smaller = sharper rolloff
-        #     softplus = lambda x: eps * np.log1p(np.exp(x/eps))
-        #     scale = softplus(1.0)  # normalize so Δ=0 → ~1/T
-
-        #     Delta_dot = (1.0 / T) * (softplus(1.0 - Delta) / scale)
+        #     Delta_dot = 1/T # compute delta dot
         # else:
         #     Delta_dot = 0
+
+        ##  Delta = sin(t) 
+        if Delta < 1:
+            Delta_dot = np.cos(t) # compute delta dot
+        else:
+            Delta_dot = 0
         
         count = 0
         # theta=theta+np.pi/4
@@ -377,15 +557,15 @@ def create_single_integrator_barrier_certificate_time_varying(Delta, lamb,target
                 h_circ = (error[0]*error[0] + error[1]*error[1]) - np.power(safety_radius, 2)
 
                 # ellipitical CBF
-                error_1 = (error[0]*np.cos(theta[j])+error[1]*np.sin(theta[j])) / safety_a
-                error_2 = (error[0]*np.sin(theta[j])-error[1]*np.cos(theta[j])) / safety_b 
+                error_1 = (error[0]*np.cos(theta[i])+error[1]*np.sin(theta[i])) / safety_a
+                error_2 = (error[0]*np.sin(theta[i])-error[1]*np.cos(theta[i])) / safety_b 
                 h_ellip = error_1**2 + error_2**2 - 1  
 
-                # calculate the current h (convex combination)
-                h_cur = lamb[0] * h_circ +  lamb[1] * h_ellip 
+                # calculate the previous h (convex combination)
+                h_prev = lamb[0] * h_circ +  lamb[1] * h_ellip 
 
-                # error_3 = (error[0]*np.cos(theta[j])+error[1]*np.sin(theta[j])) / a_cur
-                # error_4 = (error[0]*np.sin(theta[j])-error[1]*np.cos(theta[j])) / b_cur 
+                # error_3 = (error[0]*np.cos(theta[i])+error[1]*np.sin(theta[i])) / a_cur
+                # error_4 = (error[0]*np.sin(theta[i])-error[1]*np.cos(theta[i])) / b_cur 
                 # h_cur2 = error_3**2 + error_4**2 - 1  
                 
                 # h_circ dot
@@ -393,11 +573,11 @@ def create_single_integrator_barrier_certificate_time_varying(Delta, lamb,target
                 h_circ_dot2 = 2 * error[1]
 
                 # h_ellip dot
-                h_ellip_dot1 = 2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_b**2
-                h_ellip_dot2 = 2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.sin(theta[j])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*-np.cos(theta[j])/ safety_b**2
+                h_ellip_dot1 = 2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.cos(theta[i])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*np.sin(theta[i])/ safety_b**2
+                h_ellip_dot2 = 2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.sin(theta[i])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*-np.cos(theta[i])/ safety_b**2
 
-                # h_cur_dot1 = 2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ a_cur**2 + 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ b_cur**2
-                # h_cur_dot2 = 2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ a_cur**2 + 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ b_cur**2
+                # h_cur_dot1 = 2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.cos(theta[i])/ a_cur**2 + 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*np.sin(theta[i])/ b_cur**2
+                # h_cur_dot2 = 2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.cos(theta[i])/ a_cur**2 + 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*np.sin(theta[i])/ b_cur**2
                 
                 # Current h_dot
                 h_cur_dot1 = lamb[0] * h_circ_dot1 +  lamb[1] * h_ellip_dot1
@@ -406,18 +586,18 @@ def create_single_integrator_barrier_certificate_time_varying(Delta, lamb,target
                 # if 1 switching current to circle, if 2 switching current to ellipse
                 if target_shape == 1:
                     # calculate h_3 
-                    h_tv = (1-Delta) * h_cur + Delta * h_circ 
+                    h_tv = (1-Delta) * h_prev + Delta * h_circ 
                     # for time derivative 
-                    diff = h_circ - h_cur
+                    diff = h_circ - h_prev
                     # print("diff to circle",diff)
                     A[count, 2*i] = -((1-Delta) * h_cur_dot1 + Delta * h_circ_dot1)
                     A[count, 2*i+1] = -((1-Delta) * h_cur_dot2 + Delta * h_circ_dot2)
                     A[count, 2*j] = (1-Delta) * h_cur_dot1 + Delta * h_circ_dot1
                     A[count, 2*j+1] = (1-Delta) * h_cur_dot2 + Delta * h_circ_dot2
                 elif target_shape == 2:
-                    h_tv = (1-Delta) * h_cur + Delta * h_ellip 
+                    h_tv = (1-Delta) * h_prev + Delta * h_ellip 
                     # for time derivative 
-                    diff = h_ellip - h_cur
+                    diff = h_ellip - h_prev
                     # print("diff to circle",diff)
                     A[count, 2*i] = -((1-Delta) * h_cur_dot1 + Delta * h_ellip_dot1)
                     A[count, 2*i+1] = -((1-Delta) * h_cur_dot2 + Delta * h_ellip_dot2)
@@ -602,6 +782,321 @@ def create_single_integrator_barrier_certificate_with_boundary(barrier_gain=100,
     return f
 
 
+def create_single_integrator_barrier_certificate_with_obstacles(barrier_gain=100, safety_radius=0.17, magnitude_limit=0.2):
+    """Creates a barrier certificate for a single-integrator system with a rectangular boundary included.  This function
+    returns another function for optimization reasons.
+
+    barrier_gain: double (controls how quickly agents can approach each other.  lower = slower)
+    safety_radius: double (how far apart the agents will stay)
+    magnitude_limit: how fast the robot can move linearly.
+
+    -> function (the barrier certificate function)
+    """
+
+    #Check user input types
+    assert isinstance(barrier_gain, (int, float)), "In the function create_single_integrator_barrier_certificate, the barrier gain (barrier_gain) must be an integer or float. Recieved type %r." % type(barrier_gain).__name__
+    assert isinstance(safety_radius, (int, float)), "In the function create_single_integrator_barrier_certificate, the safe distance between robots (safety_radius) must be an integer or float. Recieved type %r." % type(safety_radius).__name__
+    assert isinstance(magnitude_limit, (int, float)), "In the function create_single_integrator_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be an integer or float. Recieved type %r." % type(magnitude_limit).__name__
+
+    #Check user input ranges/sizes
+    assert barrier_gain > 0, "In the function create_single_integrator_barrier_certificate, the barrier gain (barrier_gain) must be positive. Recieved %r." % barrier_gain
+    assert safety_radius >= 0.12, "In the function create_single_integrator_barrier_certificate, the safe distance between robots (safety_radius) must be greater than or equal to the diameter of the robot (0.12m) plus the distance to the look ahead point used in the diffeomorphism if that is being used. Recieved %r." % safety_radius
+    assert magnitude_limit > 0, "In the function create_single_integrator_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be positive. Recieved %r." % magnitude_limit
+    assert magnitude_limit <= 0.2, "In the function create_single_integrator_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be less than the max speed of the robot (0.2m/s). Recieved %r." % magnitude_limit
+
+
+    def f(dxi, x):
+        #Check user input types
+        assert isinstance(dxi, np.ndarray), "In the function created by the create_single_integrator_barrier_certificate function, the single-integrator robot velocity command (dxi) must be a numpy array. Recieved type %r." % type(dxi).__name__
+        assert isinstance(x, np.ndarray), "In the function created by the create_single_integrator_barrier_certificate function, the robot states (x) must be a numpy array. Recieved type %r." % type(x).__name__
+
+        #Check user input ranges/sizes
+        assert x.shape[0] == 2, "In the function created by the create_single_integrator_barrier_certificate function, the dimension of the single integrator robot states (x) must be 2 ([x;y]). Recieved dimension %r." % x.shape[0]
+        assert dxi.shape[0] == 2, "In the function created by the create_single_integrator_barrier_certificate function, the dimension of the robot single integrator velocity command (dxi) must be 2 ([x_dot;y_dot]). Recieved dimension %r." % dxi.shape[0]
+        assert x.shape[1] == dxi.shape[1], "In the function created by the create_single_integrator_barrier_certificate function, the number of robot states (x) must be equal to the number of robot single integrator velocity commands (dxi). Recieved a current robot pose input array (x) of size %r x %r and single integrator velocity array (dxi) of size %r x %r." % (x.shape[0], x.shape[1], dxi.shape[0], dxi.shape[1])
+
+        obstacle_centers = np.array([[-0.6,  0.6],
+                                     [-0.2,  -0.2]], dtype=float)  # shape (2, 2)
+        obstacle_radius = 0.2 # fixed radius
+        K = 2 # number of obstacles
+
+        # Initialize some variables for computational savings
+        N = dxi.shape[1]
+        num_constraints = int(comb(N, 2)) + + N * 2
+        A = np.zeros((num_constraints, 2*N))
+        b = np.zeros(num_constraints)
+        #H = sparse(matrix(2*np.identity(2*N)))
+        H = 2*np.identity(2*N)
+
+        count = 0
+        for i in range(N-1):
+            for j in range(i+1, N):
+                error = x[:, i] - x[:, j]
+                h = (error[0]*error[0] + error[1]*error[1]) - np.power(safety_radius, 2)
+
+                A[count, (2*i, (2*i+1))] = -2 * error
+                A[count, (2*j, (2*j+1))] = 2 * error
+                b[count] = barrier_gain*np.power(h, 3) #    cubic
+                # b[count] = barrier_gain*h
+                count += 1
+        
+        for i in range(N):
+                    xi = x[:, i]
+                    for k in range(K):
+                        ck = obstacle_centers[:, k]
+                        err = xi - ck
+                        h_obs = (err[0] * err[0] + err[1] * err[1]) - np.power(obstacle_radius, 2)
+
+                        # Only agent i's control appears
+                        A[count, (2 * i, 2 * i + 1)] = -2 * err
+                        b[count] = 0.5 * np.power(h_obs, 3) # fixed gain
+                        count += 1
+        
+        # Threshold control inputs before QP
+        norms = np.linalg.norm(dxi, 2, 0)
+        idxs_to_normalize = (norms > magnitude_limit)
+        dxi[:, idxs_to_normalize] *= magnitude_limit/norms[idxs_to_normalize]
+
+        f = -2*np.reshape(dxi, (2*N,1), order='F')
+        b = np.reshape(b, (count,1), order='F')
+        result = qp(matrix(H), matrix(f), matrix(A), matrix(b))['x']
+        #result = solver2.solve_qp(H, f, A, b, 0)[0]
+
+        return np.reshape(result, (2, N), order='F')
+
+    return f
+
+
+def create_single_integrator_barrier_certificate_ellipse_with_obstacles(barrier_gain=100, safety_a=0.17, safety_b=0.12, magnitude_limit=0.2):
+    """Creates a barrier certificate for a single-integrator system with an elliptical safety region.
+    
+    barrier_gain: double (controls how quickly agents can approach each other. lower = slower)
+    safety_a: double (semi-major axis of the safety ellipse)
+    safety_b: double (semi-minor axis of the safety ellipse)
+    magnitude_limit: double (how fast the robot can move linearly)
+
+    -> function (the barrier certificate function)
+    """
+
+    # Check user input types
+    assert isinstance(barrier_gain, (int, float)), "The barrier gain must be an integer or float. Received type %r." % type(barrier_gain).__name__
+    assert isinstance(safety_a, (int, float)), "The semi-major axis of the safety ellipse must be an integer or float. Received type %r." % type(safety_a).__name__
+    assert isinstance(safety_b, (int, float)), "The semi-minor axis of the safety ellipse must be an integer or float. Received type %r." % type(safety_b).__name__
+    assert isinstance(magnitude_limit, (int, float)), "The maximum linear velocity of the robot must be an integer or float. Received type %r." % type(magnitude_limit).__name__
+
+    # Check user input ranges/sizes
+    assert barrier_gain > 0, "The barrier gain must be positive. Received %r." % barrier_gain
+    assert safety_a > 0 and safety_b > 0, "The semi-major and semi-minor axes must be positive. Received a: %r, b: %r." % (safety_a, safety_b)
+    assert magnitude_limit > 0, "The maximum linear velocity of the robot must be positive. Received %r." % magnitude_limit
+
+    def f(dxi, x, theta):
+        # Check user input types
+        assert isinstance(dxi, np.ndarray), "The single-integrator robot velocity command must be a numpy array. Received type %r." % type(dxi).__name__
+        assert isinstance(x, np.ndarray), "The robot states must be a numpy array. Received type %r." % type(x).__name__
+
+        # Check user input ranges/sizes
+        assert x.shape[0] == 2, "The dimension of the single integrator robot states must be 2 ([x;y]). Received dimension %r." % x.shape[0]
+        assert dxi.shape[0] == 2, "The dimension of the robot single integrator velocity command must be 2 ([x_dot;y_dot]). Received dimension %r." % dxi.shape[0]
+        assert x.shape[1] == dxi.shape[1], "The number of robot states must be equal to the number of robot single integrator velocity commands. Received x: %r x %r, dxi: %r x %r." % (x.shape[0], x.shape[1], dxi.shape[0], dxi.shape[1])
+
+        obstacle_centers = np.array([[-0.6,  0.6],
+                                     [-0.2,  -0.2]], dtype=float)  # shape (2, 2)
+        obstacle_radius = 0.2 # fixed radius
+        K = 2 # number of obstacles
+
+        # Initialize variables for computational savings
+        N = dxi.shape[1]
+        num_constraints = int(N * (N - 1) / 2) + N*K
+        A = np.zeros((num_constraints, 2*N))
+        b = np.zeros(num_constraints)
+        H = sparse(matrix(2 * np.identity(2*N)))
+
+        count = 0
+        # theta=theta+np.pi/4
+
+        # Centralized QP
+        for i in range(N-1):
+            for j in range(i+1, N):
+                error = x[:, i] - x[:, j]
+
+                ## Rotation 
+                error_1 = (error[0]*np.cos(theta[i])+error[1]*np.sin(theta[i])) 
+                error_2 = (error[0]*np.sin(theta[i])-error[1]*np.cos(theta[i])) 
+                h = (error_1/safety_a )**2 + (error_2/safety_b)**2 - 1    
+
+                h_ellip_dot1 = 2 * error_1 * np.cos(theta[i]) / safety_a**2 + 2 * error_2 * np.sin(theta[i]) / safety_b**2
+                h_ellip_dot2 = 2 * error_1 * np.sin(theta[i]) / safety_a**2 + 2 * error_2 * -np.cos(theta[i]) / safety_b**2
+
+                # if np.mod(i,2) == 0:
+                A[count, 2*i] = -h_ellip_dot1
+                A[count, 2*i+1] = -h_ellip_dot2
+                A[count, 2*j] = h_ellip_dot1
+                A[count, 2*j+1] = h_ellip_dot2
+
+                b[count] = barrier_gain * h**3
+                count += 1
+
+        for i in range(N):
+                    xi = x[:, i]
+                    for k in range(K):
+                        ck = obstacle_centers[:, k]
+                        err = xi - ck
+                        h_obs = (err[0] * err[0] + err[1] * err[1]) - np.power(obstacle_radius, 2)
+
+                        # Only agent i's control appears
+                        A[count, (2 * i, 2 * i + 1)] = -2 * err
+                        b[count] = 0.5 * np.power(h_obs, 3) # fixed gain
+                        count += 1
+
+        # Threshold control inputs before QP
+        norms = np.linalg.norm(dxi, 2, axis=0)
+        idxs_to_normalize = (norms > magnitude_limit)
+        dxi[:, idxs_to_normalize] *= magnitude_limit / norms[idxs_to_normalize]
+    
+        f = -2 * np.reshape(dxi, (2*N,), order='F')
+        result = qp(H, matrix(f), matrix(A), matrix(b))['x']
+
+        return np.reshape(result, (2, -1), order='F')
+
+    return f
+
+def create_single_integrator_barrier_certificate_time_varying_with_obstacles(Delta, lamb,target_shape, t, safety_radius=0.17, barrier_gain=100, safety_a=0.17, safety_b=0.12, magnitude_limit=0.2):
+    """Creates a barrier certificate for a single-integrator system with circle to elliptical time varying safety region.
+    
+    barrier_gain: double (controls how quickly agents can approach each other. lower = slower)
+    safety_a: double (semi-major axis of the safety ellipse)
+    safety_b: double (semi-minor axis of the safety ellipse)
+    magnitude_limit: double (how fast the robot can move linearly)
+
+    -> function (the barrier certificate function)
+    """
+
+    # Check user input types
+    assert isinstance(barrier_gain, (int, float)), "The barrier gain must be an integer or float. Received type %r." % type(barrier_gain).__name__
+    assert isinstance(safety_a, (int, float)), "The semi-major axis of the safety ellipse must be an integer or float. Received type %r." % type(safety_a).__name__
+    assert isinstance(safety_b, (int, float)), "The semi-minor axis of the safety ellipse must be an integer or float. Received type %r." % type(safety_b).__name__
+    assert isinstance(magnitude_limit, (int, float)), "The maximum linear velocity of the robot must be an integer or float. Received type %r." % type(magnitude_limit).__name__
+
+    # Check user input ranges/sizes
+    assert barrier_gain > 0, "The barrier gain must be positive. Received %r." % barrier_gain
+    assert safety_a > 0 and safety_b > 0, "The semi-major and semi-minor axes must be positive. Received a: %r, b: %r." % (safety_a, safety_b)
+    assert magnitude_limit > 0, "The maximum linear velocity of the robot must be positive. Received %r." % magnitude_limit
+
+    def f(dxi, x,theta):
+        # Check user input types
+        assert isinstance(dxi, np.ndarray), "The single-integrator robot velocity command must be a numpy array. Received type %r." % type(dxi).__name__
+        assert isinstance(x, np.ndarray), "The robot states must be a numpy array. Received type %r." % type(x).__name__
+
+        # Check user input ranges/sizes
+        assert x.shape[0] == 2, "The dimension of the single integrator robot states must be 2 ([x;y]). Received dimension %r." % x.shape[0]
+        assert dxi.shape[0] == 2, "The dimension of the robot single integrator velocity command must be 2 ([x_dot;y_dot]). Received dimension %r." % dxi.shape[0]
+        assert x.shape[1] == dxi.shape[1], "The number of robot states must be equal to the number of robot single integrator velocity commands. Received x: %r x %r, dxi: %r x %r." % (x.shape[0], x.shape[1], dxi.shape[0], dxi.shape[1])
+
+        obstacle_centers = np.array([[-0.6,  0.6],
+                                     [-0.2,  -0.2]], dtype=float)  # shape (2, 2)
+        obstacle_radius = 0.2 # fixed radius
+        K = 2 # number of obstacles
+
+        # Initialize variables for computational savings
+        N = dxi.shape[1]
+        num_constraints = int(N * (N - 1) / 2)+N*K
+        A = np.zeros((num_constraints, 2*N))
+        b = np.zeros(num_constraints)
+        H = sparse(matrix(2 * np.identity(2*N)))
+
+        # Derivative of Delta
+        ## Constant function 
+        # if Delta < 1:
+        #     Delta_dot = 1/T # compute delta dot
+        # else:
+        #     Delta_dot = 0
+
+        ##  Delta = sin(t) 
+        if Delta < 1:
+            Delta_dot = np.cos(t) # compute delta dot
+        else:
+            Delta_dot = 0
+        
+        count = 0
+
+        # Centralized QP
+        for i in range(N-1):
+            for j in range(i+1, N):
+                error = x[:, i] - x[:, j]
+                # circular CBF
+                h_circ = (error[0]*error[0] + error[1]*error[1]) - np.power(safety_radius, 2)
+
+                # ellipitical CBF
+                error_1 = (error[0]*np.cos(theta[i])+error[1]*np.sin(theta[i])) / safety_a
+                error_2 = (error[0]*np.sin(theta[i])-error[1]*np.cos(theta[i])) / safety_b 
+                h_ellip = error_1**2 + error_2**2 - 1  
+
+                # calculate the previous h (convex combination)
+                h_prev = lamb[0] * h_circ +  lamb[1] * h_ellip 
+                
+                # h_circ dot
+                h_circ_dot1 = 2 * error[0]
+                h_circ_dot2 = 2 * error[1]
+
+                # h_ellip dot
+                h_ellip_dot1 = 2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.cos(theta[i])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*np.sin(theta[i])/ safety_b**2
+                h_ellip_dot2 = 2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.sin(theta[i])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*-np.cos(theta[i])/ safety_b**2
+                
+                # Current h_dot
+                h_cur_dot1 = lamb[0] * h_circ_dot1 +  lamb[1] * h_ellip_dot1
+                h_cur_dot2 = lamb[0] * h_circ_dot2 +  lamb[1] * h_ellip_dot2
+
+                # if 1 switching current to circle, if 2 switching current to ellipse
+                if target_shape == 1:
+                    # calculate h_3 
+                    h_tv = (1-Delta) * h_prev + Delta * h_circ 
+                    # for time derivative 
+                    diff = h_circ - h_prev
+                    # print("diff to circle",diff)
+                    A[count, 2*i] = -((1-Delta) * h_cur_dot1 + Delta * h_circ_dot1)
+                    A[count, 2*i+1] = -((1-Delta) * h_cur_dot2 + Delta * h_circ_dot2)
+                    A[count, 2*j] = (1-Delta) * h_cur_dot1 + Delta * h_circ_dot1
+                    A[count, 2*j+1] = (1-Delta) * h_cur_dot2 + Delta * h_circ_dot2
+                elif target_shape == 2:
+                    h_tv = (1-Delta) * h_prev + Delta * h_ellip 
+                    # for time derivative 
+                    diff = h_ellip - h_prev
+                    # print("diff to circle",diff)
+                    A[count, 2*i] = -((1-Delta) * h_cur_dot1 + Delta * h_ellip_dot1)
+                    A[count, 2*i+1] = -((1-Delta) * h_cur_dot2 + Delta * h_ellip_dot2)
+                    A[count, 2*j] = (1-Delta) * h_cur_dot1 + Delta * h_ellip_dot1
+                    A[count, 2*j+1] = (1-Delta) * h_cur_dot2 + Delta * h_ellip_dot2
+                
+                # class k function and time derivative in delta 
+                b[count] = barrier_gain * h_tv**3 + Delta_dot * diff
+                #  Delta_dot * diff
+                count += 1
+
+        for i in range(N):
+                    xi = x[:, i]
+                    for k in range(K):
+                        ck = obstacle_centers[:, k]
+                        err = xi - ck
+                        h_obs = (err[0] * err[0] + err[1] * err[1]) - np.power(obstacle_radius, 2)
+
+                        # Only agent i's control appears
+                        A[count, (2 * i, 2 * i + 1)] = -2 * err
+                        b[count] = 0.5 * np.power(h_obs, 3) # fixed gain
+                        count += 1
+
+        # Threshold control inputs before QP
+        norms = np.linalg.norm(dxi, 2, axis=0)
+        idxs_to_normalize = (norms > magnitude_limit)
+        dxi[:, idxs_to_normalize] *= magnitude_limit / norms[idxs_to_normalize]
+
+        f = -2 * np.reshape(dxi, (2*N,), order='F')
+        result = qp(H, matrix(f), matrix(A), matrix(b))['x']
+
+        return np.reshape(result, (2, -1), order='F')
+
+    return f
+
+
 def create_single_integrator_barrier_certificate_with_boundary_ellipse(barrier_gain=100, safety_a=0.17, safety_b=0.12, magnitude_limit=0.2, boundary_points = np.array([-1.6, 1.6, -1.2, 1.2])):
     """Creates a barrier certificate for a single-integrator system with an elliptical safety region with a rectangular boundary included.  This function
     returns another function for optimization reasons.
@@ -650,20 +1145,20 @@ def create_single_integrator_barrier_certificate_with_boundary_ellipse(barrier_g
         for i in range(N-1):
             for j in range(i+1, N):
                 error = x[:, i] - x[:, j]
-                error_1 = (error[0]*np.cos(theta[j])+error[1]*np.sin(theta[j])) / safety_a
-                error_2 = (error[0]*np.sin(theta[j])-error[1]*np.cos(theta[j])) / safety_b
+                error_1 = (error[0]*np.cos(theta[i])+error[1]*np.sin(theta[i])) / safety_a
+                error_2 = (error[0]*np.sin(theta[i])-error[1]*np.cos(theta[i])) / safety_b
                 h = error_1**2 + error_2**2 - 1    
 
                 # if np.mod(i,2) == 0:
-                A[count, 2*i] = -2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_a**2 - 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_b**2
-                A[count, 2*i+1] = -2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.sin(theta[j])/ safety_a**2 - 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*-np.cos(theta[j])/ safety_b**2
-                A[count, 2*j] = 2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_b**2
-                A[count, 2*j+1] = 2 * ((error[0])*np.cos(theta[j])+(error[1])*np.sin(theta[j]))*np.sin(theta[j])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[j])-(error[1])*np.cos(theta[j]))*-np.cos(theta[j])/ safety_b**2
+                A[count, 2*i] = -2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.cos(theta[i])/ safety_a**2 - 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*np.sin(theta[i])/ safety_b**2
+                A[count, 2*i+1] = -2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.sin(theta[i])/ safety_a**2 - 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*-np.cos(theta[i])/ safety_b**2
+                A[count, 2*j] = 2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.cos(theta[i])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*np.sin(theta[i])/ safety_b**2
+                A[count, 2*j+1] = 2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.sin(theta[i])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*-np.cos(theta[i])/ safety_b**2
                 # else:
-                #     A[count, 2*i] = -2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_b**2 - 2 * ((error[0]-safety_a)*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_a**2
-                #     A[count, 2*i+1] = -2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*-np.sin(theta[j])/ safety_b**2 - 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.cos(theta[j])/ safety_a**2
-                #     A[count, 2*j] = 2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*np.cos(theta[j])/ safety_b**2 + 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.sin(theta[j])/ safety_a**2
-                #     A[count, 2*j+1] = 2 * ((error[0])*np.cos(theta[j])-(error[1])*np.sin(theta[j]))*-np.sin(theta[j])/ safety_b**2 + 2 * ((error[0])*np.sin(theta[j])+(error[1])*np.cos(theta[j]))*np.cos(theta[j])/ safety_a**2
+                #     A[count, 2*i] = -2 * ((error[0])*np.cos(theta[i])-(error[1])*np.sin(theta[i]))*np.cos(theta[i])/ safety_b**2 - 2 * ((error[0]-safety_a)*np.sin(theta[i])+(error[1])*np.cos(theta[i]))*np.sin(theta[i])/ safety_a**2
+                #     A[count, 2*i+1] = -2 * ((error[0])*np.cos(theta[i])-(error[1])*np.sin(theta[i]))*-np.sin(theta[i])/ safety_b**2 - 2 * ((error[0])*np.sin(theta[i])+(error[1])*np.cos(theta[i]))*np.cos(theta[i])/ safety_a**2
+                #     A[count, 2*j] = 2 * ((error[0])*np.cos(theta[i])-(error[1])*np.sin(theta[i]))*np.cos(theta[i])/ safety_b**2 + 2 * ((error[0])*np.sin(theta[i])+(error[1])*np.cos(theta[i]))*np.sin(theta[i])/ safety_a**2
+                #     A[count, 2*j+1] = 2 * ((error[0])*np.cos(theta[i])-(error[1])*np.sin(theta[i]))*-np.sin(theta[i])/ safety_b**2 + 2 * ((error[0])*np.sin(theta[i])+(error[1])*np.cos(theta[i]))*np.cos(theta[i])/ safety_a**2
 
                 b[count] = barrier_gain * h**3
                 count += 1

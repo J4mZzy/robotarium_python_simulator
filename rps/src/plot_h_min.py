@@ -7,8 +7,15 @@ from reading the data saved through the simulations/experiments'''
 # Load data
 trajectories = np.load('trajectories.npy', allow_pickle=True).item()
 
+lambs = np.load('lamb_list.npy')
+# print(lambs)
+Deltas = np.load('Delta_list.npy')
+targets = np.load('target_list.npy')
+print(Deltas)
+
+
 # Number of robots in the simulation/experiment
-N = 11 # 2,4,8,11,16,20
+N = 16 # 2,4,8,11,16,20
 
 # time steps
 T = np.array(trajectories[0]).shape[0]
@@ -16,9 +23,9 @@ h_min = np.empty(T)
 # print(np.array(trajectories[0])[1,:])
 
 ## Setting values for the barrier parameters
-r = 0.25 # Circle radius
-a = 0.25 # Ellipse major axis length
-b = 0.2  # Ellipse minor axis length
+r = 0.25  # Circle radius
+a = 0.25  # Ellipse major axis length
+b = 0.2   # Ellipse minor axis length
 
 for t in range(T):
     h_min[t] = np.inf
@@ -36,8 +43,19 @@ for t in range(T):
             error_2 = (error_0*np.cos(x_i[2])+error_1*np.sin(x_i[2])) / a
             error_3 = (error_0*np.sin(x_i[2])-error_1*np.cos(x_i[2])) / b
             h_ij_ell = error_2**2 + error_3**2 - 1  
+            # error_2 = (error_0) / a
+            # error_3 = (error_1) / b
+            # h_ij_ell = error_2**2 + error_3**2 - 1  
 
-            h_ij = np.min(np.array([h_ij_cir,h_ij_ell]))
+
+            # h_ij = np.min(np.array([h_ij_cir,h_ij_ell]))
+            h_prev = lambs[t][0]*h_ij_cir + lambs[t][1]*h_ij_ell
+
+            ## 1 morph to circle, 2 morph to ellipse
+            if targets[t] == 1:
+                h_ij = (1-Deltas[t]) * h_prev + Deltas[t] * h_ij_cir 
+            elif targets[t] == 2:
+                h_ij = (1-Deltas[t]) * h_prev + Deltas[t] * h_ij_ell 
 
     ## Pick the samller one 
     if h_ij < h_min[t]:
@@ -60,8 +78,9 @@ plt.rcParams['font.family'] = 'Times New Roman'
 plt.rcParams['text.usetex'] = True  # Enable LaTeX rendering
 
 # Plot with different line styles and thickness
-plt.plot(iterations, h_min, 
-         linestyle='solid', linewidth=3, color='b')
+# plt.plot(iterations, h_min, 
+#          linestyle='solid', linewidth=3, color='b')
+plt.plot(iterations, h_min, marker='o', linestyle='none', markersize=3, color='b')
 plt.plot(iterations, zeros,
          linestyle='dashed', linewidth=3, color='r')
 # plt.scatter(index, h_min_global, color='black', marker='.', s=400, label="global $h_{/min}$")

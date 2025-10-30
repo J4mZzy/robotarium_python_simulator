@@ -17,7 +17,7 @@ iterations = 600
 ## The arena is bounded between x \in (-1.6,1.6)  y\in (-1,1) 
 
 # Number of robots
-N = 16 # 2,4,8,11,16,20
+N = 20 # 2,4,8,11,16,20
 
 # radius of the circle robots are forming
 circle_radius = 0.9
@@ -79,7 +79,7 @@ b = 0.20
 # We're working in single-integrator dynamics, and we don't want the robots
 # to collide.  Thus, we're going to use barrier certificates (in a centrialized way)
 CBF_n = 2 # how many CBFs we are using 
-si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=1,safety_radius=radius)
+si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=10,safety_radius=radius)
 si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a,safety_b=b)
 
 ############################# Pre construction for time-varying CBFs ###########################################
@@ -141,6 +141,7 @@ si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(bar
 #     print(idx, W[idx])
 #     return cert_list[idx], idx, W[idx]
 
+t = 0 
 
 #################################################################################################################
 
@@ -153,6 +154,10 @@ target_array[previous_target_shape-1] = 1
 Delta_cur = np.array([1.0,0.0]) # current Delta array
 lamb = np.array([1.0,0.0]) # current lambda array (storing the current shape)
 Delta = 0 # Delta
+
+lamb_list = []
+Delta_list = []
+target_list = []
 
 # Initialize the transition variables
 transition_in_progress = False
@@ -201,6 +206,7 @@ trajectories = {i: [] for i in range(N)}
 # Initialize empty lists to store norm values
 norm_dxi_cir_list = []
 norm_dxi_ellip_list = []
+norm_dxi_tv_list = []
 
 ## initialize for loop speed calculation
 start_time = None # timer variable in loop
@@ -268,7 +274,7 @@ while(1):
         now = time.time() # start counter
         dt = now - prev_time 
         # eta = np.sqrt(2)/T*dt # rate of change
-        # # print("dt",dt)
+        # print("dt",dt)
         # # print(np.linalg.norm((target_array-Delta_cur),ord=2))
 
         # # if the change gets to a terminal shape, or exceeds it
@@ -293,6 +299,7 @@ while(1):
 
         # print("previous_target_shape",previous_target_shape)
         
+        ## Delta = sin(t) for t \in [0,pi/2), and = 1 if t >= \pi/2
         if previous_target_shape != target_shape:
             for i in range(CBF_n):
                 if i == target_shape - 1:
@@ -301,11 +308,19 @@ while(1):
                     lamb[i] = (1-Delta)*lamb[i]
             Delta = 0
             previous_target_shape = target_shape
+            t = 0 # reset time
         else:
-            Delta = np.clip(Delta + 1/T*dt, 0, 1)  # update Delta   
-
+            t = t + dt # update time
+            if 0 <= t < np.pi/2:
+                Delta = np.clip(Delta + np.cos(t)*dt, 0, 1)  # update Delta   
+            else:
+                Delta = 1
+        # print(t)
         # print("Delta",Delta)
         # print("lambda",lamb)
+        lamb_list.append(lamb.copy())
+        Delta_list.append(Delta)
+        target_list.append(target_shape)
 
         ##########################################################################################
         # print("a_cur:",a_cur)
@@ -314,8 +329,8 @@ while(1):
         ## Delta cur is used to get the current convex combination CBF, and Delta target is used to calculate h3 (time varying CBF)!
 
         # si_barrier_cert_tv, idx_sel, (w1_sel, w2_sel) = pick_cert_for_Delta(Delta_cur, target_shape)
-        si_barrier_cert_tv = create_single_integrator_barrier_certificate_time_varying(Delta=Delta,lamb=lamb,target_shape=target_shape,T=T
-                                                                                       ,barrier_gain=1,safety_radius=radius
+        si_barrier_cert_tv = create_single_integrator_barrier_certificate_time_varying(Delta=Delta,lamb=lamb,target_shape=target_shape,t=t
+                                                                                       ,barrier_gain=10,safety_radius=radius
                                                                                        ,safety_a=a,safety_b=b,a_cur=a_cur,b_cur=b_cur)  
 
         # si_barrier_cert_tv = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a,safety_b=b)
@@ -323,6 +338,11 @@ while(1):
         dxu_tv = si_to_uni_dyn(dxi_tv, x)      
         dxu = dxu_tv
         # dxu = dxu_ellip
+
+        norm_dxi_tv = np.linalg.norm(dxi_tv,ord=2)
+        # Append the norms to the lists for post-processing
+        norm_dxi_tv_list.append(norm_dxi_tv)
+
         ## Delta cur has ([circle,ellipse])
         # Delta_cur = Delta_target # update Delta current     
         # Remove previous scatter plot markers
@@ -349,20 +369,20 @@ while(1):
         # error_2 = (error[0]*np.sin(theta[j])-error[1]*np.cos(theta[j])) / safety_b 
         # h_ellip = error_1**2 + error_2**2 - 1 
         # # calculate the current h (convex combination)
-        # h_cur = lamb[0] * h_circ +  lamb[1] * h_ellip 
+        # h_prev = lamb[0] * h_circ +  lamb[1] * h_ellip 
         # if target_shape == 1:
         #         # calculate h_3 
-        #         h_tv = (1-Delta) * h_cur + Delta * h_circ 
+        #         h_tv = (1-Delta) * h_prev + Delta * h_circ 
         # if target_shape == 1:
         
         #########################################################################################
         # Create and add ellipses to the axes
-        for i in range(N):
-            ellipse = Ellipse(xy=(x[0, i] + L * np.cos(x[2, i]), x[1, i] + L * np.sin(x[2, i])),
-                            width=a_cur*0.9, height=b_cur*0.9, angle=np.degrees(thetas[i]),
-                            facecolor='none', edgecolor=CM[i], linewidth=2)
-            r.axes.add_patch(ellipse)
-            g_objects.append(ellipse)  # Keep track of the patches       
+        # for i in range(N):
+        #     ellipse = Ellipse(xy=(x[0, i] + L * np.cos(x[2, i]), x[1, i] + L * np.sin(x[2, i])),
+        #                     width=a_cur*0.9, height=b_cur*0.9, angle=np.degrees(thetas[i]),
+        #                     facecolor='none', edgecolor=CM[i], linewidth=2)
+        #     r.axes.add_patch(ellipse)
+        #     g_objects.append(ellipse)  # Keep track of the patches       
 
         # Set the velocities by mapping the single-integrator inputs to unciycle inputs
         r.set_velocities(np.arange(N), dxu)
@@ -380,12 +400,15 @@ r.call_at_scripts_end()
 
 
 # Convert lists to a single 2D NumPy array
-u_norms_array = np.column_stack((norm_dxi_cir_list, norm_dxi_ellip_list))
+u_norms_array = np.column_stack((norm_dxi_cir_list, norm_dxi_ellip_list,norm_dxi_tv_list))
 
 #Save Data
 print(time.time() - exp_start_time)
 np.save('trajectories', trajectories)
 np.save("u_norms", u_norms_array)
+np.save("lamb_list", lamb_list)
+np.save("Delta_list", Delta_list)
+np.save("target_list", target_list)
 
 ## plot block
 
