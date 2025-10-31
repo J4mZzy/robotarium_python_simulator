@@ -93,7 +93,7 @@ target_array[previous_target_shape-1] = 1
 
 # Default shape (begin with circle)         
 Delta_cur = np.array([1.0,0.0]) # current Delta array
-lamb = np.array([1.0,0.0]) # current lambda array (storing the current shape)
+lamb = np.array([1.0,0.0,0.0,0.0]) # current lambda array (storing the current shape)
 Delta = 0 # Delta
 
 lamb_list = []
@@ -246,16 +246,17 @@ while(1):
                 if i == target_shape - 1:
                     lamb[i] = (1-Delta)*lamb[i] + Delta
                 else:
-                    lamb[i] = (1-Delta)*lamb[i]
+                    lamb[i] = (1-Delta)*lamb[i] 
             Delta = 0
             previous_target_shape = target_shape
             t = 0 # reset time
         else:
             t = t + dt # update time
             if 0 <= t < np.pi/2:
-                Delta = np.clip(Delta + np.cos(t)*dt, 0, 1)  # update Delta   
+                Delta = np.clip(Delta + np.sin(2*t)*dt, 0, 1)  # update Delta   
             else:
                 Delta = 1
+
         # print(t)
         # print("Delta",Delta)
         # print("lambda",lamb)

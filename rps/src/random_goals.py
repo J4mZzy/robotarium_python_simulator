@@ -17,7 +17,7 @@ iterations = 600
 ## The arena is bounded between x \in (-1.6,1.6)  y\in (-1,1) 
 
 # Number of robots
-N = 8 # 2,4,8,11,16,20
+N = 11 # 2,4,8,11,16,20
 
 # Layout params
 rect_width   = 2.5
@@ -142,7 +142,6 @@ target_array = np.zeros(CBF_n)
 target_array[previous_target_shape-1] = 1
 
 # Default shape (begin with circle)         
-Delta_cur = np.array([1.0,0.0]) # current Delta array
 lamb = np.array([1.0, 0.0, 0.0, 0.0]) # current lambda array (storing the current shape)
 Delta = 0 # Delta
 
@@ -151,9 +150,6 @@ Delta_list = []
 target_list = []
 
 # Initialize the transition variables
-transition_in_progress = False
-# start_time = None
-T = 1  # Duration for the morphing transition in seconds
 exp_start_time = time.time()
 
 # Create SI to UNI dynamics tranformation
@@ -185,7 +181,7 @@ for ii in range(goal_points.shape[1])]
 goal_markers = [r.axes.scatter(goal_points[0,ii], goal_points[1,ii], s=marker_size_goal, marker='s', facecolors='none',edgecolors=CM[ii,:],linewidth=line_width,zorder=-3)
 for ii in range(goal_points.shape[1])]
 
-# Test 
+## Obstacles 
 obstacle_1 = r.axes.scatter(-0.8, -0.2, s=obs_r_marker_size, marker='o', facecolors=[1, 0, 0],edgecolors='none',linewidth=line_width,zorder=-3) # [133/255, 116/255, 55/255]
 obstacle_2 = r.axes.scatter(0.8, -0.2, s=obs_r_marker_size, marker='o', facecolors=[0, 0, 1],edgecolors='none',linewidth=line_width,zorder=-3)
 
@@ -282,6 +278,8 @@ while(1):
         # print("previous_target_shape",previous_target_shape)
         
         ## Delta = sin(t) for t \in [0,pi/2), and = 1 if t >= \pi/2
+
+        ## Delta = (1-cos(2t))/2 for t \in [0,pi/2), and = 1 if t >= \pi
         if previous_target_shape != target_shape:
             for i in range(CBF_n):
                 if i == target_shape - 1:
@@ -295,28 +293,33 @@ while(1):
         else:
             t = t + dt # update time
             if 0 <= t < np.pi/2:
-                Delta = np.clip(Delta + np.cos(t)*dt, 0, 1)  # update Delta   
+                Delta = np.clip(Delta + np.sin(2*t)*dt, 0, 1)  # update Delta   
             else:
                 Delta = 1
 
-        print("dt",dt)
-        print("Delta",Delta)
-        print("lambda",lamb)
+        if Delta < 1:
+            Delta_dot = np.sin(2*t) # compute delta dot
+        else:
+            Delta_dot = 0
+        print(Delta_dot)
 
+        # print("dt",dt)
+        # print("Delta",Delta)
+        # print("lambda",lamb)
+
+        ## for data saving 
         lamb_list.append(lamb.copy())
         Delta_list.append(Delta)
         target_list.append(target_shape)
-
         ##########################################################################################
         # si_barrier_cert_tv, idx_sel, (w1_sel, w2_sel) = pick_cert_for_Delta(Delta_cur, target_shape)
         si_barrier_cert_tv = create_single_integrator_barrier_certificate_time_varying_with_obstacles(Delta=Delta,lamb=lamb,target_shape=target_shape,t=t
                                                                                                       ,barrier_gain=1,safety_radius=radius,safety_a=a,safety_b=b)  
 
-        # si_barrier_cert_tv = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a,safety_b=b)
         dxi_tv = si_barrier_cert_tv(dxi, x_si, thetas)  
         dxu_tv = si_to_uni_dyn(dxi_tv, x)      
         dxu = dxu_tv
-        # dxu = dxu_cir
+        dxu = dxu_ellip
 
         norm_dxi_tv = np.linalg.norm(dxi_tv,ord=2)
         # Append the norms to the lists for post-processing
@@ -376,7 +379,7 @@ while(1):
 r.call_at_scripts_end()
 
 
-# Convert lists to a single 2D NumPy array
+# Convert lists to a single 2D array
 u_norms_array = np.column_stack((norm_dxi_cir_list, norm_dxi_ellip_list, norm_dxi_tv_list))
 
 #Save Data

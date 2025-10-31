@@ -18,7 +18,7 @@ iterations = 600
 ## The areana is bounded between x \in (-1.6,1.6)  y\in (-1,1) 
 
 # Number of robots
-N = 16 # 2,4,8,11,16,20
+N = 8 # 2,4,8,11,16,20
 
 #############################################################################################
 rect_width = 1.6  # Width of the rectangle
@@ -362,7 +362,7 @@ while(1):
         else:
             t = t + dt # update time
             if 0 <= t < np.pi/2:
-                Delta = np.clip(Delta + np.cos(t)*dt, 0, 1)  # update Delta   
+                Delta = np.clip(Delta + np.sin(2*t)*dt, 0, 1)  # update Delta   
             else:
                 Delta = 1
         # print(t)
@@ -386,6 +386,7 @@ while(1):
         # si_barrier_cert_tv = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a,safety_b=b)
         dxi_tv = si_barrier_cert_tv(dxi, x_si, thetas)  
         dxu_tv = si_to_uni_dyn(dxi_tv, x)      
+        
         # dxu = dxu_tv
         dxu = dxu_tri
 
