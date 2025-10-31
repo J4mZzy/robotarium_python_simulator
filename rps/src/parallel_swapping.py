@@ -18,7 +18,7 @@ iterations = 600
 ## The areana is bounded between x \in (-1.6,1.6)  y\in (-1,1) 
 
 # Number of robots
-N = 8 # 2,4,8,11,16,20
+N = 11 # 2,4,8,11,16,20
 
 #############################################################################################
 rect_width = 1.6  # Width of the rectangle
@@ -117,25 +117,25 @@ goal_points = np.array([initial_x, initial_y, initial_heading])  # Start by sett
 goal_points[0, :] = -initial_conditions[0,:] 
 
 #################################################################
-# radius of the circle robots are forming
-circle_radius = 0.9
+# # radius of the circle robots are forming
+# circle_radius = 0.9
 
-# Calculate initial positions in a circular formation
-theta = np.linspace(0, 2 * np.pi, N, endpoint=False)  # Angles for each robot
-initial_x = circle_radius * np.cos(theta)  # X coordinates
-initial_y = circle_radius * np.sin(theta)  # Y coordinates
+# # Calculate initial positions in a circular formation
+# theta = np.linspace(0, 2 * np.pi, N, endpoint=False)  # Angles for each robot
+# initial_x = circle_radius * np.cos(theta)  # X coordinates
+# initial_y = circle_radius * np.sin(theta)  # Y coordinates
 
-# Headings (facing inward)
-initial_heading = theta + np.pi  # Heading towards the center (add pi to point inward)
+# # Headings (facing inward)
+# initial_heading = theta + np.pi  # Heading towards the center (add pi to point inward)
 
-# Combine initial positions into the required format (x, y, theta)
-initial_conditions = np.array([initial_x, initial_y, initial_heading])
-# Instantiate Robotarium object
-r = robotarium.Robotarium(number_of_robots=N, show_figure=True, sim_in_real_time=True, initial_conditions=initial_conditions)
-# Define goal points: for a swapping behavior, we can simply offset the current positions
-goal_points = np.array([initial_x, initial_y, theta])  # Start by setting goal points to the current positions
-goal_points[0, :] = -initial_conditions[0,:] 
-goal_points[1, :] = -initial_conditions[1,:]
+# # Combine initial positions into the required format (x, y, theta)
+# initial_conditions = np.array([initial_x, initial_y, initial_heading])
+# # Instantiate Robotarium object
+# r = robotarium.Robotarium(number_of_robots=N, show_figure=True, sim_in_real_time=True, initial_conditions=initial_conditions)
+# # Define goal points: for a swapping behavior, we can simply offset the current positions
+# goal_points = np.array([initial_x, initial_y, theta])  # Start by setting goal points to the current positions
+# goal_points[0, :] = -initial_conditions[0,:] 
+# goal_points[1, :] = -initial_conditions[1,:]
 ##################################################################
 
 
@@ -178,7 +178,7 @@ w = 0.40
 ############################################ CBF Library #######################################################
 # We're working in single-integrator dynamics, and we don't want the robots
 # to collide.  Thus, we're going to use barrier certificates (in a centrialized way)
-CBF_n = 2 # how many CBFs we are using 
+CBF_n = 4 # how many CBFs we are using 
 si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=10,safety_radius=radius)
 si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a,safety_b=b)
 si_barrier_cert_sqaure = create_single_integrator_barrier_certificate_square(barrier_gain=1,safety_width=w,norm=3)
@@ -191,8 +191,8 @@ target_array = np.zeros(CBF_n)
 target_array[previous_target_shape-1] = 1
 
 # Default shape (begin with circle)         
-Delta_cur = np.array([1.0,0.0]) # current Delta array
-lamb = np.array([1.0,0.0]) # current lambda array (storing the current shape)
+# Delta_cur = np.array([1.0,0.0]) # current Delta array
+lamb = np.array([1.0,0.0,0.0,0.0]) # current lambda array (storing the current shape)
 Delta = 0 # Delta
 
 lamb_list = []
@@ -311,6 +311,13 @@ while(1):
         target_shape = np.argmax([norm_dxi_cir,norm_dxi_ellip]) + 1 # s_t (shape to morph into) (1 is circle, 2 is ellipse)
         # print("index:",target_shape)
 
+        ############################################ TEST #################################################
+        if norm_dxi_cir >= norm_dxi_ellip:
+            target_shape = 1
+        elif norm_dxi_cir < norm_dxi_ellip:
+            target_shape = 4 #square
+        ###########################################################################################################################
+
         ## Set target shape array
         target_array[:] = 0 # reset to 0
         # print("target_array_zeros",target_array)
@@ -361,8 +368,8 @@ while(1):
             t = 0 # reset time
         else:
             t = t + dt # update time
-            if 0 <= t < np.pi/2:
-                Delta = np.clip(Delta + np.sin(2*t)*dt, 0, 1)  # update Delta   
+            if 0 <= t < 1:
+                Delta = np.clip(Delta + np.pi/2*np.sin(np.pi*t)*dt, 0, 1)  # update Delta   
             else:
                 Delta = 1
         # print(t)
@@ -388,7 +395,7 @@ while(1):
         dxu_tv = si_to_uni_dyn(dxi_tv, x)      
         
         # dxu = dxu_tv
-        dxu = dxu_tri
+        dxu = dxu_sqaure
 
         norm_dxi_tv = np.linalg.norm(dxi_tv,ord=2)
         # Append the norms to the lists for post-processing

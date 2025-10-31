@@ -252,8 +252,8 @@ while(1):
             t = 0 # reset time
         else:
             t = t + dt # update time
-            if 0 <= t < np.pi/2:
-                Delta = np.clip(Delta + np.sin(2*t)*dt, 0, 1)  # update Delta   
+            if 0 <= t < 1:
+                Delta = np.clip(Delta + np.pi/2*np.sin(np.pi*t)*dt, 0, 1)  # update Delta   
             else:
                 Delta = 1
 
