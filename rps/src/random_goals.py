@@ -17,7 +17,7 @@ iterations = 600
 ## The arena is bounded between x \in (-1.6,1.6)  y\in (-1,1) 
 
 # Number of robots
-N = 16 # 2,4,8,11,16,20
+N = 8 # 2,4,8,11,16,20
 
 # Layout params
 rect_width   = 2.5
@@ -143,7 +143,7 @@ target_array[previous_target_shape-1] = 1
 
 # Default shape (begin with circle)         
 Delta_cur = np.array([1.0,0.0]) # current Delta array
-lamb = np.array([1.0,0.0]) # current lambda array (storing the current shape)
+lamb = np.array([1.0, 0.0, 0.0, 0.0]) # current lambda array (storing the current shape)
 Delta = 0 # Delta
 
 lamb_list = []
@@ -186,8 +186,8 @@ goal_markers = [r.axes.scatter(goal_points[0,ii], goal_points[1,ii], s=marker_si
 for ii in range(goal_points.shape[1])]
 
 # Test 
-obstacle_1 = r.axes.scatter(-0.8, -0.2, s=obs_r_marker_size, marker='o', facecolors=[133/255, 116/255, 55/255],edgecolors='none',linewidth=line_width,zorder=-3)
-obstacle_2 = r.axes.scatter(0.8, -0.2, s=obs_r_marker_size, marker='o', facecolors=[133/255, 116/255, 55/255],edgecolors='none',linewidth=line_width,zorder=-3)
+obstacle_1 = r.axes.scatter(-0.8, -0.2, s=obs_r_marker_size, marker='o', facecolors=[1, 0, 0],edgecolors='none',linewidth=line_width,zorder=-3) # [133/255, 116/255, 55/255]
+obstacle_2 = r.axes.scatter(0.8, -0.2, s=obs_r_marker_size, marker='o', facecolors=[0, 0, 1],edgecolors='none',linewidth=line_width,zorder=-3)
 
 
 r.step()
@@ -254,7 +254,7 @@ while(1):
         norm_dxi_ellip_list.append(norm_dxi_ellip)
 
         # Finding s_t, which is the shape we are morphing to
-        target_shape = np.argmax([norm_dxi_cir,norm_dxi_ellip]) + 1 # s_t (shape to morph into) (1 is circle, 2 is ellipse)
+        target_shape = np.argmax([norm_dxi_cir,norm_dxi_ellip]) + 1 # s_t (shape to morph into) (1 is circle, 2 is ellipse, 3 is triagnle, 4 is square)
         # print("index:",target_shape)
 
         ## Set target shape array
@@ -269,25 +269,11 @@ while(1):
             prev_time = time.time() # start timer
         now = time.time() # start counter
         dt = now - prev_time 
-        # eta = np.sqrt(2)/T*dt # rate of change
-        # print("dt",dt)
-        # # print(np.linalg.norm((target_array-Delta_cur),ord=2))
-
-        # # if the change gets to a terminal shape, or exceeds it
-        # if np.linalg.norm(target_array-Delta_cur,ord=2) <= eta:
-        #     Delta_target = target_array.copy() # complete transformation to a terminal shape
-        # else:
-        #     # we morph into the desired CBF 
-        #     Delta_target = Delta_cur + eta* (target_array-Delta_cur) # used to calculate h3, discretized change
-         
-        # Delta_dot = 1/T # compute delta dot
-        # print("Delta_target:",Delta_target)
-        # print("Delta_cur[1]:",Delta_cur[1])
 
         # For plotting CBF shapes, the a and b currently 
         b_cur = (1-Delta) *(lamb[0] * 0.25 + lamb[1] * 0.20) + Delta * 0.20   # Interpolate ellipse width to circle radius
         a_cur = 0.25  # Keep a constant, or you can interpolate if needed
-        # print("Delta sum:",Delta_cur[0]+Delta_cur[1])
+
 
         prev_time = time.time() # record time
         ##########################################################################################
@@ -300,10 +286,11 @@ while(1):
             for i in range(CBF_n):
                 if i == target_shape - 1:
                     lamb[i] = (1-Delta)*lamb[i] + Delta
-                else:
+                else: 
+                    # not the target shape
                     lamb[i] = (1-Delta)*lamb[i]
-            Delta = 0
-            previous_target_shape = target_shape
+            previous_target_shape = target_shape # switch shape
+            Delta = 0 # reset Delta
             t = 0 # reset time
         else:
             t = t + dt # update time
@@ -311,38 +298,30 @@ while(1):
                 Delta = np.clip(Delta + np.cos(t)*dt, 0, 1)  # update Delta   
             else:
                 Delta = 1
-        # print(t)
-        # print("Delta",Delta)
-        # print("lambda",lamb)
+
+        print("dt",dt)
+        print("Delta",Delta)
+        print("lambda",lamb)
 
         lamb_list.append(lamb.copy())
         Delta_list.append(Delta)
         target_list.append(target_shape)
 
         ##########################################################################################
-        # print("a_cur:",a_cur)
-        # print("b_cur:",b_cur)
-
-        ## Delta cur is used to get the current convex combination CBF, and Delta target is used to calculate h3 (time varying CBF)!
-
         # si_barrier_cert_tv, idx_sel, (w1_sel, w2_sel) = pick_cert_for_Delta(Delta_cur, target_shape)
         si_barrier_cert_tv = create_single_integrator_barrier_certificate_time_varying_with_obstacles(Delta=Delta,lamb=lamb,target_shape=target_shape,t=t
-                                                                                                      ,barrier_gain=10,safety_radius=radius
-                                                                                                      ,safety_a=a,safety_b=b)  
+                                                                                                      ,barrier_gain=1,safety_radius=radius,safety_a=a,safety_b=b)  
 
         # si_barrier_cert_tv = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a,safety_b=b)
         dxi_tv = si_barrier_cert_tv(dxi, x_si, thetas)  
         dxu_tv = si_to_uni_dyn(dxi_tv, x)      
         dxu = dxu_tv
-        dxu = dxu_ellip
+        # dxu = dxu_cir
 
         norm_dxi_tv = np.linalg.norm(dxi_tv,ord=2)
         # Append the norms to the lists for post-processing
         norm_dxi_tv_list.append(norm_dxi_tv)
 
-
-        ## Delta cur has ([circle,ellipse])
-        # Delta_cur = Delta_target # update Delta current     
         # Remove previous scatter plot markers
         for g in g_objects:
             g.remove()
@@ -375,12 +354,12 @@ while(1):
         
         #########################################################################################
         # Create and add ellipses to the axes
-        for i in range(N):
-            ellipse = Ellipse(xy=(x[0, i] + L * np.cos(x[2, i]), x[1, i] + L * np.sin(x[2, i])),
-                            width=a_cur*0.9, height=b_cur*0.9, angle=np.degrees(thetas[i]),
-                            facecolor='none', edgecolor=CM[i], linewidth=2)
-            r.axes.add_patch(ellipse)
-            g_objects.append(ellipse)  # Keep track of the patches       
+        # for i in range(N):
+        #     ellipse = Ellipse(xy=(x[0, i] + L * np.cos(x[2, i]), x[1, i] + L * np.sin(x[2, i])),
+        #                     width=a_cur*0.9, height=b_cur*0.9, angle=np.degrees(thetas[i]),
+        #                     facecolor='none', edgecolor=CM[i], linewidth=2)
+        #     r.axes.add_patch(ellipse)
+        #     g_objects.append(ellipse)  # Keep track of the patches       
 
         # Set the velocities by mapping the single-integrator inputs to unciycle inputs
         r.set_velocities(np.arange(N), dxu)

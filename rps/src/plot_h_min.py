@@ -11,7 +11,7 @@ lambs = np.load('lamb_list.npy')
 # print(lambs)
 Deltas = np.load('Delta_list.npy')
 targets = np.load('target_list.npy')
-print(Deltas)
+# print(Deltas)
 
 
 # Number of robots in the simulation/experiment
@@ -78,9 +78,9 @@ plt.rcParams['font.family'] = 'Times New Roman'
 plt.rcParams['text.usetex'] = True  # Enable LaTeX rendering
 
 # Plot with different line styles and thickness
-# plt.plot(iterations, h_min, 
-#          linestyle='solid', linewidth=3, color='b')
-plt.plot(iterations, h_min, marker='o', linestyle='none', markersize=3, color='b')
+plt.plot(iterations, h_min, 
+         linestyle='solid', linewidth=3, color='b')
+# plt.plot(iterations, h_min, marker='o', linestyle='none', markersize=3, color='b')
 plt.plot(iterations, zeros,
          linestyle='dashed', linewidth=3, color='r')
 # plt.scatter(index, h_min_global, color='black', marker='.', s=400, label="global $h_{/min}$")
