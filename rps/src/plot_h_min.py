@@ -1,112 +1,111 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-'''This code generates the plot for the minimum h (CBF output) value between all the robots during the experiment 
-from reading the data saved through the simulations/experiments'''
-
 # Load data
-trajectories = np.load('trajectories.npy', allow_pickle=True).item()
+trajectories = np.load('trajectories.npy', allow_pickle=True).item()  # dict: i -> (T x 3)
+lambs = np.load('lamb_list.npy')       # shape (T, 4) expected
+Deltas = np.load('Delta_list.npy')     # shape (T,)
+targets = np.load('target_list.npy')   # shape (T,)
 
-lambs = np.load('lamb_list.npy')
-# print(lambs)
-Deltas = np.load('Delta_list.npy')
-targets = np.load('target_list.npy')
 # print(Deltas)
+# Number of robots
+N = 8
 
-
-# Number of robots in the simulation/experiment
-N = 4 # 2,4,8,11,16,20
-
-# time steps
+# Time steps (assumes key 0 exists)
 T = np.array(trajectories[0]).shape[0]
-h_min = np.empty(T)
-# print(np.array(trajectories[0])[1,:])
+h_min = np.full(T, np.inf)
 
-## Setting values for the barrier parameters
-r = 0.25  # Circle radius
-a = 0.25  # Ellipse major axis length
-b = 0.2   # Ellipse minor axis length
+# ---- Barrier parameters (once) ----
+r = 0.25
+a = 0.25*0.95 
+b = 0.25 
+p = 3
+safety_width = 0.4
+rt3 = np.sqrt(3.0)  # for the triangular barrier
+
+# (optional) make trajectories arrays once
+traj = {i: np.asarray(trajectories[i]) for i in range(N)}  # each is (T, 3)
+
+def logsumexp3(L1, L2, L3):
+    """Stable log-sum-exp for 3 scalars."""
+    m = max(L1, L2, L3)
+    return m + np.log(np.exp(L1 - m) + np.exp(L2 - m) + np.exp(L3 - m))
 
 for t in range(T):
-    h_min[t] = np.inf
-    for i in range(N):
-        x_i = np.array(trajectories[i])[t,:]
-        for j in range(N):
-            if i == j:
-                continue
-            x_j = np.array(trajectories[j])[t,:]
-            
-            ## Circular CBF
-            error_0 = x_i[0]-x_j[0]
-            error_1 = x_i[1]-x_j[1]
+    # loop unique unordered pairs (i<j). If you want all ordered pairs, use permutations(range(N),2)
+    for i in range(N - 1):
+        xi = traj[i][t, :]          # (x, y, theta)
+        for j in range(i + 1, N):
+            xj = traj[j][t, :]
 
-            h_ij_cir = (error_0*error_0 + error_1*error_1) - np.power(r, 2)
+            # relative pose in world frame
+            ex = xi[0] - xj[0]
+            ey = xi[1] - xj[1]
 
-            error_1 = (error_0*np.cos(x_i[2])+error_1*np.sin(x_i[2])) 
-            error_2 = (error_0*np.sin(x_i[2])-error_1*np.cos(x_i[2]))
-             
-            ## Elliptical CBF
-            h_ij_ell = (error_1/a)**2 + (error_2/b)**2 - 1 
+            # ---- Circle CBF ----
+            h_ij_cir = (ex * ex /r**2 + ey * ey/r**2) - 1
 
-            p = 3
-            safety_width = 0.4
+            # ---- Rotate into agent i frame (do NOT overwrite ex/ey) ----
+            c = np.cos(xi[2]); s = np.sin(xi[2])
+            u =  c * ex + s * ey                 # x in i-frame
+            v = s * ex - c * ey                 # y in i-frame
 
-            h_ij_square = (np.power(np.power(np.abs(error_1),p) + np.power(np.abs(error_2),p),1/p)) - safety_width/2
+            # ---- Ellipse CBF ----
+            h_ij_ell = (u / a) ** 2 + (v / b) ** 2 - 1.0
 
-            h_ij_tri = 3/5 * np.log(np.exp(4*error_1+4*np.sqrt(3)*error_2) + np.exp(-8*error_1) + np.exp(4*error_1-4*np.sqrt(3)*error_2))- 1
+            # ---- L^p "square" CBF ----
+            h_ij_square = (np.abs(u) ** p + np.abs(v) ** p) ** (1.0 / p) - safety_width / 2.0
 
+            # ---- Log-sum-exp "triangle" CBF (stable) ----
+            L1 = 4 * u + 4 * rt3 * v
+            L2 = -8 * u
+            L3 = 4 * u - 4 * rt3 * v
+            h_ij_tri = (3.0 / 5.0) * logsumexp3(L1, L2, L3) - 1.0
 
-            # h_ij = np.min(np.array([h_ij_cir,h_ij_ell]))
-            h_prev = lambs[t][0]*h_ij_cir + lambs[t][1]*h_ij_ell + lambs[t][2]*h_ij_tri + lambs[t][3]*h_ij_square
+            # previous blended barrier with lambdas at time t
+            lam = lambs[t]  # expect length 4
+            h_prev = lam[0] * h_ij_cir + lam[1] * h_ij_ell + lam[2] * h_ij_tri + lam[3] * h_ij_square
 
-            ## 1 morph to circle, 2 morph to ellipse
-            if targets[t] == 1:
-                h_ij = (1-Deltas[t]) * h_prev + Deltas[t] * h_ij_cir 
-            elif targets[t] == 2:
-                h_ij = (1-Deltas[t]) * h_prev + Deltas[t] * h_ij_ell 
-            elif targets[t] == 3:
-                h_ij = (1-Deltas[t]) * h_prev + Deltas[t] * h_ij_tri 
-            elif targets[t] == 4:
-                h_ij = (1-Deltas[t]) * h_prev + Deltas[t] * h_ij_square 
+            # morph toward target
+            Delta_t = Deltas[t]
+            tgt = targets[t]
+            # print(tgt)
+            if tgt == 1:
+                h_ij = (1 - Delta_t) * h_prev + Delta_t * h_ij_cir
+                # h_ij = h_ij_cir
+            elif tgt == 2:
+                h_ij = (1 - Delta_t) * h_prev + Delta_t * h_ij_ell
+                # h_ij = h_ij_ell
+            elif tgt == 3:
+                h_ij = (1 - Delta_t) * h_prev + Delta_t * h_ij_tri
+            elif tgt == 4:
+                h_ij = (1 - Delta_t) * h_prev + Delta_t * h_ij_square
+            else:
+                h_ij = h_prev  # fallback if target out of range
+            # h_ij = h_ij_ell
 
-    ## Pick the samller one 
-    if h_ij < h_min[t]:
-        h_min[t] = h_ij
+            # ---- take the minimum across pairs (INSIDE the loops) ----
+            if h_ij < h_min[t]:
+                h_min[t] = h_ij
 
-## Variables
+# Vars for plot
 iterations = np.arange(T)
-h_min_global = np.min(h_min)
-index = np.argmin(h_min)
-zeros = np.zeros(T)
+h_min_global = float(np.min(h_min))
+index = int(np.argmin(h_min))
+zeros = np.zeros(T)   # <-- was np.empty(T)
 
-## Display minimum value of all time on terminal
 print(h_min_global)
 
-## Plot block
+# Plot
 plt.figure(figsize=(8, 5.5))
-
-# Set global font to Times New Roman and enable LaTeX
 plt.rcParams['font.family'] = 'Times New Roman'
-plt.rcParams['text.usetex'] = True  # Enable LaTeX rendering
+plt.rcParams['text.usetex'] = True
 
-# Plot with different line styles and thickness
 plt.plot(iterations, h_min, linestyle='solid', linewidth=3, color='b')
-# plt.plot(iterations, h_min, marker='o', linestyle='none', markersize=3, color='b')
-plt.plot(iterations, zeros,
-         linestyle='dashed', linewidth=3, color='r')
-# plt.scatter(index, h_min_global, color='black', marker='.', s=400, label="global $h_{/min}$")
-
+plt.plot(iterations, zeros, linestyle='dashed', linewidth=3, color='r')
 
 plt.xlabel(r"\textbf{Time step}", fontsize=22)
 plt.ylabel(r"$\mathbf{h_{\mathbf{\min}}}$", fontsize=22)
-
-# Adjust axis ticks for better readability
-plt.xticks(fontsize=18)
-plt.yticks(fontsize=18)
-
-# Display the plot
+plt.xticks(fontsize=18); plt.yticks(fontsize=18)
 # plt.savefig("h_min_20_agents", dpi=600)
 plt.show()
-
-
-

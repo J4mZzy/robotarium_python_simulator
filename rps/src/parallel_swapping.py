@@ -191,7 +191,6 @@ target_array = np.zeros(CBF_n)
 target_array[previous_target_shape-1] = 1
 
 # Default shape (begin with circle)         
-# Delta_cur = np.array([1.0,0.0]) # current Delta array
 lamb = np.array([1.0,0.0,0.0,0.0]) # current lambda array (storing the current shape)
 Delta = 0 # Delta
 

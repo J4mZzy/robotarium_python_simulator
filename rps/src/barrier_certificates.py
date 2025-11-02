@@ -61,16 +61,17 @@ def create_single_integrator_barrier_certificate(barrier_gain=100, safety_radius
         H = sparse(matrix(2*np.identity(2*N)))
 
         count = 0
-        #Centralized QP
-        for i in range(N):
-            for j in range(N):
-                if i == j:
-                    continue
-                error = x[:, i] - x[:, j]
-                h = (error[0]*error[0] + error[1]*error[1]) - np.power(safety_radius, 2)
+           
 
-                A[count, (2*i, (2*i+1))] = -2*error
-                A[count, (2*j, (2*j+1))] = 2*error
+        #Centralized QP
+        for i in range(N-1):
+            for j in range(i+1,N):
+                error = x[:, i] - x[:, j]
+                # h = (error[0]*error[0] + error[1]*error[1]) - np.power(safety_radius, 2)
+                h = (error[0]/safety_radius)**2 + (error[1]/safety_radius)**2 - 1 
+
+                A[count, (2*i, (2*i+1))] = -2*error/safety_radius**2
+                A[count, (2*j, (2*j+1))] = 2*error/safety_radius**2
                 b[count] = barrier_gain*np.power(h, 3)
 
                 count += 1
@@ -196,8 +197,8 @@ def create_single_integrator_barrier_certificate_ellipse_decentralized(agent_ind
         count = 0
 
         # decentralized QP
-        for j in range(N):
-            if j != agent_index:  # Skip the agent itself
+        for i in range(N):
+            if i != agent_index:  # Skip the agent itself
                 error = x[:, agent_index] - x[:, j]
                 error_1 = (error[0]*np.cos(theta[agent_index])+error[1]*np.sin(theta[agent_index])) / safety_a
                 error_2 = (error[0]*np.sin(theta[agent_index])-error[1]*np.cos(theta[agent_index])) / safety_b
@@ -278,10 +279,8 @@ def create_single_integrator_barrier_certificate_ellipse(barrier_gain=100, safet
         # theta=theta+np.pi/4
 
         # Centralized QP
-        for i in range(N):
-            for j in range(N):
-                if i == j:
-                    continue
+        for i in range(N-1):
+            for j in range(i+1,N):
                 error = x[:, i] - x[:, j]
 
                 ## Rotation 
@@ -366,10 +365,8 @@ def create_single_integrator_barrier_certificate_square(barrier_gain=100, safety
 
         count = 0
         #Centralized QP
-        for i in range(N):
-            for j in range(N):
-                if i == j:
-                    continue
+        for i in range(N-1):
+            for j in range(i+1,N):
                 error = x[:, i] - x[:, j]
                 ## Rotation
                 error_1 = (error[0]*np.cos(theta[i])+error[1]*np.sin(theta[i])) 
@@ -449,10 +446,8 @@ def create_single_integrator_barrier_certificate_triangle(barrier_gain=100, magn
 
         count = 0
         #Centralized QP
-        for i in range(N):
-            for j in range(N):
-                if i == j:
-                    continue
+        for i in range(N-1):
+            for j in range(i+1,N):
                 error = x[:, i] - x[:, j]
 
                 ## Rotation
@@ -536,7 +531,7 @@ def create_single_integrator_barrier_certificate_time_varying(Delta, lamb,target
 
         # Initialize variables for computational savings
         N = dxi.shape[1]
-        num_constraints = int(N * (N - 1))
+        num_constraints = int(N * (N - 1)/2)
         A = np.zeros((num_constraints, 2*N))
         b = np.zeros(num_constraints)
         H = sparse(matrix(2 * np.identity(2*N)))
@@ -559,20 +554,24 @@ def create_single_integrator_barrier_certificate_time_varying(Delta, lamb,target
         count = 0
 
         # Centralized QP
-        for i in range(N):
-            for j in range(N):
-                if i == j:
-                    continue
+        # for i in range(N):
+        #     for j in range(N):
+        #         if i == j:
+        #             continue
+        #         error = x[:, i] - x[:, j]
+        for i in range(N-1):
+            for j in range(i+1,N):
                 error = x[:, i] - x[:, j]
 
                 ###################################### library ########################################
                 # circular CBF
-                h_circ = (error[0]*error[0] + error[1]*error[1]) - np.power(safety_radius, 2)
+                # h_circ = (error[0]*error[0] + error[1]*error[1]) - np.power(safety_radius, 2)
+                h_circ = (error[0]/safety_radius)**2 + (error[1]/safety_radius)**2 - 1 
 
                 # elliptical
                 error_1 = (error[0]*np.cos(theta[i])+error[1]*np.sin(theta[i])) 
                 error_2 = (error[0]*np.sin(theta[i])-error[1]*np.cos(theta[i])) 
-                h_ellip = (error_1/safety_a )**2 + (error_2/safety_b)**2 - 1    
+                h_ellip = (error_1/safety_a)**2 + (error_2/safety_b)**2 - 1    
 
                 ## smooth square
                 p = 3
@@ -584,14 +583,16 @@ def create_single_integrator_barrier_certificate_time_varying(Delta, lamb,target
 
                 ########################################################################################
                 # calculate the previous h (convex combination)
-                h_prev = lamb[0] * h_circ +  lamb[1] * h_ellip + lamb[2] * h_tri + lamb[3] * h_square  # circle and ellipse for experiment 1 n 2
+                h_cur = lamb[0] * h_circ +  lamb[1] * h_ellip + lamb[2] * h_tri + lamb[3] * h_square  # circle and ellipse for experiment 1 n 2
                 ### Change below for running experiment 3
-                # h_prev = lamb[0] * h_circ +  lamb[3] * h_square  # circle and ellipse for experiment 3
+                # h_cur = lamb[0] * h_circ +  lamb[3] * h_square  # circle and ellipse for experiment 3
 
                 
                 # h_circ dot
-                h_circ_dot1 = 2 * error[0]
-                h_circ_dot2 = 2 * error[1]
+                # h_circ_dot1 = 2 * error[0]
+                # h_circ_dot2 = 2 * error[1]
+                h_circ_dot1 = 2*error[0]/safety_radius**2
+                h_circ_dot2 = 2*error[1]/safety_radius**2
 
                 # h_ellip dot
                 h_ellip_dot1 = 2 * error_1 * np.cos(theta[i]) / safety_a**2 + 2 * error_2 * np.sin(theta[i]) / safety_b**2
@@ -610,49 +611,49 @@ def create_single_integrator_barrier_certificate_time_varying(Delta, lamb,target
                 h_square_dot2 = (np.sin(theta[i])*error_1*np.abs(error_1) - np.cos(theta[i])*error_2*np.abs(error_2))/np.power((error_1*error_1*np.abs(error_1) + error_2*error_2*np.abs(error_2)),2/3)
                 
                 # Current h_dot
-                h_prev_dot1 = lamb[0] * h_circ_dot1 +  lamb[1] * h_ellip_dot1 + lamb[2] * h_tri_dot1 +  lamb[3] * h_square_dot1
-                h_prev_dot2 = lamb[0] * h_circ_dot2 +  lamb[1] * h_ellip_dot2 + lamb[2] * h_tri_dot2 +  lamb[3] * h_square_dot2
+                h_cur_dot1 = lamb[0] * h_circ_dot1 +  lamb[1] * h_ellip_dot1 + lamb[2] * h_tri_dot1 +  lamb[3] * h_square_dot1
+                h_cur_dot2 = lamb[0] * h_circ_dot2 +  lamb[1] * h_ellip_dot2 + lamb[2] * h_tri_dot2 +  lamb[3] * h_square_dot2
 
                 # if 1 switching current to circle, if 2 switching current to ellipse
                 if target_shape == 1:
-                    h_tv = (1-Delta) * h_prev + Delta * h_circ 
+                    h_tv = (1-Delta) * h_cur + Delta * h_circ 
                     # for time derivative 
-                    diff = h_circ - h_prev
+                    diff = h_circ - h_cur
 
-                    A[count, 2*i] = -((1-Delta) * h_prev_dot1 + Delta * h_circ_dot1)
-                    A[count, 2*i+1] = -((1-Delta) * h_prev_dot2 + Delta * h_circ_dot2)
-                    A[count, 2*j] = (1-Delta) * h_prev_dot1 + Delta * h_circ_dot1
-                    A[count, 2*j+1] = (1-Delta) * h_prev_dot2 + Delta * h_circ_dot2
+                    A[count, 2*i] = -((1-Delta) * h_cur_dot1 + Delta * h_circ_dot1)
+                    A[count, 2*i+1] = -((1-Delta) * h_cur_dot2 + Delta * h_circ_dot2)
+                    A[count, 2*j] = (1-Delta) * h_cur_dot1 + Delta * h_circ_dot1
+                    A[count, 2*j+1] = (1-Delta) * h_cur_dot2 + Delta * h_circ_dot2
                 elif target_shape == 2:
-                    h_tv = (1-Delta) * h_prev + Delta * h_ellip 
+                    h_tv = (1-Delta) * h_cur + Delta * h_ellip 
                     # for time derivative 
-                    diff = h_ellip - h_prev
+                    diff = h_ellip - h_cur
 
-                    A[count, 2*i] = -((1-Delta) * h_prev_dot1 + Delta * h_ellip_dot1)
-                    A[count, 2*i+1] = -((1-Delta) * h_prev_dot2 + Delta * h_ellip_dot2)
-                    A[count, 2*j] = (1-Delta) * h_prev_dot1 + Delta * h_ellip_dot1
-                    A[count, 2*j+1] = (1-Delta) * h_prev_dot2 + Delta * h_ellip_dot2
+                    A[count, 2*i] = -((1-Delta) * h_cur_dot1 + Delta * h_ellip_dot1)
+                    A[count, 2*i+1] = -((1-Delta) * h_cur_dot2 + Delta * h_ellip_dot2)
+                    A[count, 2*j] = (1-Delta) * h_cur_dot1 + Delta * h_ellip_dot1
+                    A[count, 2*j+1] = (1-Delta) * h_cur_dot2 + Delta * h_ellip_dot2
                 elif target_shape == 3:
-                    h_tv = (1-Delta) * h_prev + Delta * h_tri 
+                    h_tv = (1-Delta) * h_cur + Delta * h_tri 
                     # for time derivative 
-                    diff = h_tri - h_prev
+                    diff = h_tri - h_cur
 
-                    A[count, 2*i] = -((1-Delta) * h_prev_dot1 + Delta * h_tri_dot1)
-                    A[count, 2*i+1] = -((1-Delta) * h_prev_dot2 + Delta * h_tri_dot2)
-                    A[count, 2*j] = (1-Delta) * h_prev_dot1 + Delta * h_tri_dot1
-                    A[count, 2*j+1] = (1-Delta) * h_prev_dot2 + Delta * h_tri_dot2
+                    A[count, 2*i] = -((1-Delta) * h_cur_dot1 + Delta * h_tri_dot1)
+                    A[count, 2*i+1] = -((1-Delta) * h_cur_dot2 + Delta * h_tri_dot2)
+                    A[count, 2*j] = (1-Delta) * h_cur_dot1 + Delta * h_tri_dot1
+                    A[count, 2*j+1] = (1-Delta) * h_cur_dot2 + Delta * h_tri_dot2
                 elif target_shape == 4:
-                    h_tv = (1-Delta) * h_prev + Delta * h_square 
+                    h_tv = (1-Delta) * h_cur + Delta * h_square 
                     # for time derivative 
-                    diff = h_square - h_prev
+                    diff = h_square - h_cur
 
-                    A[count, 2*i] = -((1-Delta) * h_prev_dot1 + Delta * h_square_dot1)
-                    A[count, 2*i+1] = -((1-Delta) * h_prev_dot2 + Delta * h_square_dot2)
-                    A[count, 2*j] = (1-Delta) * h_prev_dot1 + Delta * h_square_dot1
-                    A[count, 2*j+1] = (1-Delta) * h_prev_dot2 + Delta * h_square_dot2
+                    A[count, 2*i] = -((1-Delta) * h_cur_dot1 + Delta * h_square_dot1)
+                    A[count, 2*i+1] = -((1-Delta) * h_cur_dot2 + Delta * h_square_dot2)
+                    A[count, 2*j] = (1-Delta) * h_cur_dot1 + Delta * h_square_dot1
+                    A[count, 2*j+1] = (1-Delta) * h_cur_dot2 + Delta * h_square_dot2
                 
                 # class k function and time derivative in delta 
-                b[count] = barrier_gain * h_tv**3 + Delta_dot *diff
+                b[count] = barrier_gain * h_tv**3 + Delta_dot * diff
                 #  Delta_dot * diff
                 count += 1
 
@@ -873,17 +874,15 @@ def create_single_integrator_barrier_certificate_with_obstacles(barrier_gain=100
 
         # Initialize some variables for computational savings
         N = dxi.shape[1]
-        num_constraints = int(comb(N, 2))*2 + N * 2
+        num_constraints = int(comb(N, 2)) + N * K
         A = np.zeros((num_constraints, 2*N))
         b = np.zeros(num_constraints)
         #H = sparse(matrix(2*np.identity(2*N)))
         H = 2*np.identity(2*N)
 
         count = 0
-        for i in range(N):
-            for j in range(N):
-                if i == j:
-                    continue
+        for i in range(N-1):
+            for j in range(i+1,N):
                 error = x[:, i] - x[:, j]
                 h = (error[0]*error[0] + error[1]*error[1]) - np.power(safety_radius, 2)
 
@@ -968,10 +967,8 @@ def create_single_integrator_barrier_certificate_ellipse_with_obstacles(barrier_
         # theta=theta+np.pi/4
 
         # Centralized QP
-        for i in range(N):
-            for j in range(N):
-                if i == j:
-                    continue
+        for i in range(N-1):
+            for j in range(i+1,N):
                 error = x[:, i] - x[:, j]
 
                 ## Rotation 
@@ -1052,7 +1049,7 @@ def create_single_integrator_barrier_certificate_triangle_with_obstacles(barrier
 
         # Initialize variables for computational savings
         N = dxi.shape[1]
-        num_constraints = int(N * (N - 1)) + N*K
+        num_constraints = int(N * (N - 1)/2) + N*K
         A = np.zeros((num_constraints, 2*N))
         b = np.zeros(num_constraints)
         H = sparse(matrix(2 * np.identity(2*N)))
@@ -1061,12 +1058,9 @@ def create_single_integrator_barrier_certificate_triangle_with_obstacles(barrier
         # theta=theta+np.pi/4
 
         # Centralized QP
-        for i in range(N):
-            for j in range(N):
-                if i == j:
-                    continue
+        for i in range(N-1):
+            for j in range(i+1,N):
                 error = x[:, i] - x[:, j]
-
                 ## Rotation
                 error_1 = (error[0]*np.cos(theta[i])+error[1]*np.sin(theta[i])) 
                 error_2 = (error[0]*np.sin(theta[i])-error[1]*np.cos(theta[i])) 
@@ -1154,7 +1148,7 @@ def create_single_integrator_barrier_certificate_square_with_obstacles(barrier_g
         
         # Initialize some variables for computational savings
         N = dxi.shape[1]
-        num_constraints = int(comb(N, 2))*2+N*K
+        num_constraints = int(comb(N, 2))+N*K
         A = np.zeros((num_constraints, 2*N))
         b = np.zeros(num_constraints)
         H = sparse(matrix(2*np.identity(2*N)))
@@ -1162,10 +1156,8 @@ def create_single_integrator_barrier_certificate_square_with_obstacles(barrier_g
 
         count = 0
         #Centralized QP
-        for i in range(N):
-            for j in range(N):
-                if i == j:
-                    continue
+        for i in range(N-1):
+            for j in range(i+1,N):
                 error = x[:, i] - x[:, j]
                 ## Rotation
                 error_1 = (error[0]*np.cos(theta[i])+error[1]*np.sin(theta[i])) 
@@ -1255,7 +1247,7 @@ def create_single_integrator_barrier_certificate_time_varying_with_obstacles(Del
 
         # Initialize variables for computational savings
         N = dxi.shape[1]
-        num_constraints = int(N * (N - 1))+N*K
+        num_constraints = int(N * (N - 1)/2)+N*K
         A = np.zeros((num_constraints, 2*N))
         b = np.zeros(num_constraints)
         H = sparse(matrix(2 * np.identity(2*N)))
@@ -1272,18 +1264,15 @@ def create_single_integrator_barrier_certificate_time_varying_with_obstacles(Del
         ## Delta = (1-cos(pi t))/2 for t \in [0,pi), and = 1 if t >= \pi
         if Delta < 1:
             Delta_dot = np.sin(2*t) # compute delta dot
-        else:
+        else: # Delta >=1 , Delta_dot is 0 
             Delta_dot = 0
         
         count = 0
 
         # Centralized QP
-        for i in range(N):
-            for j in range(N):
-                if i == j:
-                    continue
+        for i in range(N-1):
+            for j in range(i+1,N):
                 error = x[:, i] - x[:, j]
-
                 ###################################### library ########################################
                 # circular CBF
                 h_circ = (error[0]*error[0] + error[1]*error[1]) - np.power(safety_radius, 2)
@@ -1303,9 +1292,7 @@ def create_single_integrator_barrier_certificate_time_varying_with_obstacles(Del
 
                 ########################################################################################
                 # calculate the previous h (convex combination)
-                h_prev = lamb[0] * h_circ +  lamb[1] * h_ellip + lamb[2] * h_tri + lamb[3] * h_square  # circle and ellipse for experiment 1 n 2
-                ### Change below for running experiment 3
-                # h_prev = lamb[0] * h_circ +  lamb[3] * h_square  # circle and ellipse for experiment 3
+                h_cur = lamb[0] * h_circ +  lamb[1] * h_ellip + lamb[2] * h_tri + lamb[3] * h_square  # circle and ellipse for experiment 1 n 2
 
                 
                 # h_circ dot
@@ -1329,47 +1316,47 @@ def create_single_integrator_barrier_certificate_time_varying_with_obstacles(Del
                 h_square_dot2 = (np.sin(theta[i])*error_1*np.abs(error_1) - np.cos(theta[i])*error_2*np.abs(error_2))/np.power((error_1*error_1*np.abs(error_1) + error_2*error_2*np.abs(error_2)),2/3)
                 
                 # Current h_dot (circ,ellip,tri,square)
-                h_prev_dot1 = lamb[0] * h_circ_dot1 +  lamb[1] * h_ellip_dot1 + lamb[2] * h_tri_dot1 +  lamb[3] * h_square_dot1
-                h_prev_dot2 = lamb[0] * h_circ_dot2 +  lamb[1] * h_ellip_dot2 + lamb[2] * h_tri_dot2 +  lamb[3] * h_square_dot2
+                h_cur_dot1 = lamb[0] * h_circ_dot1 +  lamb[1] * h_ellip_dot1 + lamb[2] * h_tri_dot1 +  lamb[3] * h_square_dot1
+                h_cur_dot2 = lamb[0] * h_circ_dot2 +  lamb[1] * h_ellip_dot2 + lamb[2] * h_tri_dot2 +  lamb[3] * h_square_dot2
                 
                 # if 1 switching current to circle, if 2 switching current to ellipse
                 if target_shape == 1:
-                    h_tv = (1-Delta) * h_prev + Delta * h_circ 
+                    h_tv = (1-Delta) * h_cur + Delta * h_circ 
                     # for time derivative 
-                    diff = h_circ - h_prev
+                    diff = h_circ - h_cur
 
-                    A[count, 2*i] = -((1-Delta) * h_prev_dot1 + Delta * h_circ_dot1)
-                    A[count, 2*i+1] = -((1-Delta) * h_prev_dot2 + Delta * h_circ_dot2)
-                    A[count, 2*j] = (1-Delta) * h_prev_dot1 + Delta * h_circ_dot1
-                    A[count, 2*j+1] = (1-Delta) * h_prev_dot2 + Delta * h_circ_dot2
+                    A[count, 2*i] = -((1-Delta) * h_cur_dot1 + Delta * h_circ_dot1)
+                    A[count, 2*i+1] = -((1-Delta) * h_cur_dot2 + Delta * h_circ_dot2)
+                    A[count, 2*j] = (1-Delta) * h_cur_dot1 + Delta * h_circ_dot1
+                    A[count, 2*j+1] = (1-Delta) * h_cur_dot2 + Delta * h_circ_dot2
                 elif target_shape == 2:
-                    h_tv = (1-Delta) * h_prev + Delta * h_ellip 
+                    h_tv = (1-Delta) * h_cur + Delta * h_ellip 
                     # for time derivative 
-                    diff = h_ellip - h_prev
+                    diff = h_ellip - h_cur
 
-                    A[count, 2*i] = -((1-Delta) * h_prev_dot1 + Delta * h_ellip_dot1)
-                    A[count, 2*i+1] = -((1-Delta) * h_prev_dot2 + Delta * h_ellip_dot2)
-                    A[count, 2*j] = (1-Delta) * h_prev_dot1 + Delta * h_ellip_dot1
-                    A[count, 2*j+1] = (1-Delta) * h_prev_dot2 + Delta * h_ellip_dot2
+                    A[count, 2*i] = -((1-Delta) * h_cur_dot1 + Delta * h_ellip_dot1)
+                    A[count, 2*i+1] = -((1-Delta) * h_cur_dot2 + Delta * h_ellip_dot2)
+                    A[count, 2*j] = (1-Delta) * h_cur_dot1 + Delta * h_ellip_dot1
+                    A[count, 2*j+1] = (1-Delta) * h_cur_dot2 + Delta * h_ellip_dot2
 
                 elif target_shape == 3:
-                    h_tv = (1-Delta) * h_prev + Delta * h_tri 
+                    h_tv = (1-Delta) * h_cur + Delta * h_tri 
                     # for time derivative 
-                    diff = h_tri - h_prev
+                    diff = h_tri - h_cur
                     
-                    A[count, 2*i] = -((1-Delta) * h_prev_dot1 + Delta * h_tri_dot1)
-                    A[count, 2*i+1] = -((1-Delta) * h_prev_dot2 + Delta * h_tri_dot2)
-                    A[count, 2*j] = (1-Delta) * h_prev_dot1 + Delta * h_tri_dot1
-                    A[count, 2*j+1] = (1-Delta) * h_prev_dot2 + Delta * h_tri_dot2
+                    A[count, 2*i] = -((1-Delta) * h_cur_dot1 + Delta * h_tri_dot1)
+                    A[count, 2*i+1] = -((1-Delta) * h_cur_dot2 + Delta * h_tri_dot2)
+                    A[count, 2*j] = (1-Delta) * h_cur_dot1 + Delta * h_tri_dot1
+                    A[count, 2*j+1] = (1-Delta) * h_cur_dot2 + Delta * h_tri_dot2
                 elif target_shape == 4:
-                    h_tv = (1-Delta) * h_prev + Delta * h_square 
+                    h_tv = (1-Delta) * h_cur + Delta * h_square 
                     # for time derivative 
-                    diff = h_square - h_prev
+                    diff = h_square - h_cur
                     
-                    A[count, 2*i] = -((1-Delta) * h_prev_dot1 + Delta * h_square_dot1)
-                    A[count, 2*i+1] = -((1-Delta) * h_prev_dot2 + Delta * h_square_dot2)
-                    A[count, 2*j] = (1-Delta) * h_prev_dot1 + Delta * h_square_dot1
-                    A[count, 2*j+1] = (1-Delta) * h_prev_dot2 + Delta * h_square_dot2
+                    A[count, 2*i] = -((1-Delta) * h_cur_dot1 + Delta * h_square_dot1)
+                    A[count, 2*i+1] = -((1-Delta) * h_cur_dot2 + Delta * h_square_dot2)
+                    A[count, 2*j] = (1-Delta) * h_cur_dot1 + Delta * h_square_dot1
+                    A[count, 2*j+1] = (1-Delta) * h_cur_dot2 + Delta * h_square_dot2
                 
                 # class k function and time derivative in delta 
                 b[count] = barrier_gain * h_tv**3 + Delta_dot * diff

@@ -5,7 +5,7 @@ from rps.utilities.misc import *
 from rps.utilities.controllers import *
 
 import numpy as np
-# from matplotlib.patches import Ellipse
+from matplotlib.patches import Ellipse
 import matplotlib.pyplot as plt
 import time
 
@@ -17,7 +17,7 @@ iterations = 1000
 ## The arena is bounded between x \in (-1.6,1.6)  y\in (-1,1) 
 
 # Number of robots
-N = 8 # 2,4,8,11,16,20
+N = 16 # 2,4,8,11,16,20
 
 # radius of the circle robots are forming
 circle_radius = 0.9
@@ -71,28 +71,85 @@ font_height_points = determine_font_size(r,font_height_meters) # Will scale the 
 si_position_controller = create_si_position_controller()
 
 # Initialize parameters
-radius = 0.25
-a = 0.25
-b = 0.25*0.8
-w = 0.40
+radius1 = 0.25
+a1 = 0.25 
+b1 = 0.25*0.95
+radius2 = 0.25*0.95
+a2 = 0.25*0.95 
+b2 = 0.25*0.90
+radius3 = 0.25*90
+a3 = 0.25*0.90 
+b3 = 0.25*0.85
+radius4 = 0.25*85
+a4 = 0.25*0.85 
+b4 = 0.25*0.80
+radius5 = 0.25*80
+a5 = 0.25*0.80 
+b5 = 0.25*0.75
+
 
 ############################################ CBF Library #######################################################
 # We're working in single-integrator dynamics, and we don't want the robots
 # to collide.  Thus, we're going to use barrier certificates (in a centrialized way)
-CBF_n = 4 # how many CBFs we are using 
-si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=1,safety_radius=radius)
-si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=0.1,safety_a=a,safety_b=b)
+# CBF_n = 10 # how many CBFs we are using 
+
+si_barrier_cert_cir1 = create_single_integrator_barrier_certificate(barrier_gain=1,safety_radius=radius1)
+si_barrier_cert_ellip1 = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a1,safety_b=b1)
+si_barrier_cert_cir2 = create_single_integrator_barrier_certificate(barrier_gain=1,safety_radius=radius2)
+si_barrier_cert_ellip2 = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a2,safety_b=b2)
+si_barrier_cert_cir3 = create_single_integrator_barrier_certificate(barrier_gain=1,safety_radius=radius3)
+si_barrier_cert_ellip3 = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a3,safety_b=b3)
+si_barrier_cert_cir4 = create_single_integrator_barrier_certificate(barrier_gain=1,safety_radius=radius4)
+si_barrier_cert_ellip4 = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a4,safety_b=b4)
+si_barrier_cert_cir5 = create_single_integrator_barrier_certificate(barrier_gain=1,safety_radius=radius5)
+si_barrier_cert_ellip5 = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a5,safety_b=b5)
+
 
 t = 0 
-#################################################################################################################
 
+cir_certs = [si_barrier_cert_cir1, si_barrier_cert_cir2, si_barrier_cert_cir3,
+             si_barrier_cert_cir4, si_barrier_cert_cir5]
+ell_certs = [si_barrier_cert_ellip1, si_barrier_cert_ellip2, si_barrier_cert_ellip3,
+             si_barrier_cert_ellip4, si_barrier_cert_ellip5]
+
+# Interleave to get codes 1..10: 1=cir1, 2=ellip1, 3=cir2, 4=ellip2, ..., 9=cir5, 10=ellip5
+certs = [c for pair in zip(cir_certs, ell_certs) for c in pair]
+CBF_n = len(certs)  # 10
+
+def code_to_kind_k(code_1b: int):
+    """Return ('cir'|'ell'), k in 1..5, given 1-based code."""
+    assert 1 <= code_1b <= 10
+    if code_1b % 2 == 1:
+        return 'cir', (code_1b + 1)//2
+    else:
+        return 'ell', code_1b//2
+
+def allowed_targets(code_cur_1b: int):
+    """Adjacency rule with 'stay' allowed to avoid thrash."""
+    kind, k = code_to_kind_k(code_cur_1b)
+    allowed = {code_cur_1b}  # always allow staying
+    if kind == 'cir':
+        allowed.add(2*k)                 # ellip k
+        if k < 5: allowed.add(2*(k+1))   # ellip k+1
+    else:  # kind == 'ell'
+        allowed.add(2*k-1)               # cir k
+        if k > 1: allowed.add(2*(k-1)-1) # cir k-1
+    return sorted(allowed)
+
+def apply_cert_by_code(code_1b: int, dxi_si: np.ndarray, x_si: np.ndarray, thetas: np.ndarray):
+    """Call the correct certificate; ellipse needs thetas, circle does not."""
+    cert = certs[code_1b - 1]
+    if code_1b % 2 == 0:   # ellipse
+        return cert(dxi_si, x_si, thetas)
+    else:                  # circle
+        return cert(dxi_si, x_si)
 
 #################################################################################################################
 
 ######## Remember to change this to 1 when running ellipse ######################
-current_target_shape = 1 # initialize the shape flag as 1 (1 is circle and 2 is ellipse)
+previous_target_shape = 1 # initialize the shape flag as 1 (1 is circle and 2 is ellipse)
 target_array = np.zeros(CBF_n)
-target_array[current_target_shape-1] = 1
+target_array[previous_target_shape-1] = 1
 
 # Default shape (begin with circle)         
 Delta_cur = np.array([1.0,0.0]) # current Delta array
@@ -157,6 +214,14 @@ start_time = None # timer variable in loop
 dt = None
 prev_time = None
 
+# --- state for morphing ---
+if 'previous_target_shape' not in globals(): previous_target_shape = 1   # start at cir1
+if 'Delta' not in globals(): Delta = 1.0
+if 't' not in globals(): t = 1.0
+if 'prev_time' not in globals(): prev_time = None
+lamb = np.zeros(CBF_n); lamb[previous_target_shape-1] = 1.0  # one-hot over 10 shapes
+target_array = np.zeros(CBF_n)
+
 # While the goal is not reached
 while(1):
 # for iter in range(iterations):
@@ -178,112 +243,58 @@ while(1):
         ########################### barrier type ######################################
         # Use the barrier certificates to make sure that the agents don't collide
         # Generating safe inputs
+    
+        dxi_by_code = []
+        norm_by_code = []
+        for code in range(1, CBF_n+1):
+            dxi_f = apply_cert_by_code(code, dxi, x_si, thetas)
+            dxi_by_code.append(dxi_f)
+            # use Frobenius norm (overall effort)
+            norm_by_code.append(np.linalg.norm(dxi_f, ord='fro'))
+    
+        # Choose target shape constrained by adjacency
+        allowed = allowed_targets(previous_target_shape)
+        # Pick the allowed shape with maximal norm (matching your prior heuristic)
+        target_shape = allowed[int(np.argmax([norm_by_code[c-1] for c in allowed]))]
+    
+        # One-hot target array
+        target_array[:] = 0.0
+        target_array[target_shape - 1] = 1.0
+    
+        # ---- time and Delta schedule (ease-in-out) ----
+        now = time.perf_counter()
+        dt = 0.0 if prev_time is None else (now - prev_time)
+        prev_time = now
+    
+        # If target changed and previous morph finished, snap lambdas and reset
+        if previous_target_shape != target_shape and Delta == 1.0:
+            lamb[:] = 0.0
+            lamb[target_shape - 1] = 1.0
+            previous_target_shape = target_shape
+            t = 0.0
+            Delta = 0.0
+    
+        # Smooth progression: Delta(t) = (1 - cos(pi t))/2 on t ∈ [0,1], then hold
+        if t < 1.0:
+            Delta_dot = (np.pi/2.0) * np.sin(np.pi * t)
+            Delta = min(1.0, Delta + Delta_dot * dt)
+            t += dt
+        else:
+            Delta_dot = 0.0
+            Delta = 1.0
+    
+    
+            # print(t)
+            # print("Delta",Delta)
+            # print("lambda",lamb)
+    
+            # if iter >= 205:
+        #     time.sleep(3)
 
-        dxi_cir = si_barrier_cert_cir(dxi, x_si)                # the first barrier being circular
-        # dxi_cir = si_barrier_cert_ellip(dxi, x_si,thetas)     # the first barrier being elliptical 
-        dxi_ellip = si_barrier_cert_ellip(dxi, x_si,thetas)     # the second barrier being elliptical
-        # dxi_ellip = si_barrier_cert_cir(dxi, x_si)            # the second barrier being circular
-        
-        
-        ############################# selection ########################################
-        # Use the second single-integrator-to-unicycle mapping to map to unicycle
-        dxu_cir = si_to_uni_dyn(dxi_cir, x) # circular
-        dxu_ellip = si_to_uni_dyn(dxi_ellip, x) # elliptical
-        
-        # Default shape
-        # dxu = dxu_cir
-        # For target shape, circle =1, ellipse=2
-        norm_dxi_cir = np.linalg.norm(dxi_cir,ord=2)
-        norm_dxi_ellip = np.linalg.norm(dxi_ellip,ord=2)
-        ##TODO find the norm of the actual input in si
-
-        # Append the norms to the lists for post-processing
-        norm_dxi_cir_list.append(norm_dxi_cir)
-        norm_dxi_ellip_list.append(norm_dxi_ellip)
-
-        # Finding s_t, which is the shape we are morphing to
-        desired_target_shape = np.argmax([norm_dxi_cir,norm_dxi_ellip]) + 1 # s_t (shape to morph into) (1 is circle, 2 is ellipse)
-        # print("index:",desired_target_shape)
-
-        ## Set target shape array
-        target_array[:] = 0 # reset to 0
-        # print("target_array_zeros",target_array)
-        target_array[desired_target_shape - 1] = 1 # target array, the shape we want to morph into
-        # print("target_array_actual",target_array)
-        # print("Delta_cur",Delta_cur)
-
-        ######################################################################################
-        if prev_time is None:
-            prev_time = time.time() # start timer
-        now = time.time() # start counter
-        dt = now - prev_time 
-        # eta = np.sqrt(2)/T*dt # rate of change
-        # print("dt",dt)
-        # # print(np.linalg.norm((target_array-Delta_cur),ord=2))
-
-        # # if the change gets to a terminal shape, or exceeds it
-        # if np.linalg.norm(target_array-Delta_cur,ord=2) <= eta:
-        #     Delta_target = target_array.copy() # complete transformation to a terminal shape
-        # else:
-        #     # we morph into the desired CBF 
-        #     Delta_target = Delta_cur + eta* (target_array-Delta_cur) # used to calculate h3, discretized change
-         
-        # Delta_dot = 1/T # compute delta dot
-        # print("Delta_target:",Delta_target)
-        # print("Delta_cur[1]:",Delta_cur[1])
-
-        # For plotting CBF shapes, the a and b currently 
-        b_cur = (1-Delta) *(lamb[0] * 0.25 + lamb[1] * 0.20) + Delta * 0.20   # Interpolate ellipse width to circle radius
-        a_cur = 0.25  # Keep a constant, or you can interpolate if needed
-
-        prev_time = time.time() # record time
-        ##########################################################################################
-        ## If target has changed, reset Delta and update lambda
-
-        # print("current_target_shape",current_target_shape)
-        
-        ## Delta = (1-cos(2t))/2 for t \in [0,pi/2), and = 1 if t >= \pi
-        ## switch if shape has been reached, and set lambda to 1, if target no reached then 
-        ## switch if shape has been reached, and set lambda to 1, if target no reached then don't switch
-        # if current_target_shape != desired_target_shape:
-        #     if Delta == 1: # completed transformation to another shape and another target is selected        
-        #         for i in range(CBF_n):
-        #             if i == current_target_shape - 1:
-        #                 lamb[i] = 1  # (1-Delta)*lamb[i] + Delta 
-        #             else: 
-        #                 # not the target shape, set to 0
-        #                 lamb[i] = 0   # (1-Delta)*lamb[i] 
-        #         current_target_shape = desired_target_shape # switch target shape
-        #         Delta = 0 # reset Delta
-        #         t = 0 # reset time
-        #     # else: # has not completed                      
-
-        # if 0 <= t < 1:
-        #     Delta = np.clip(Delta + np.pi/2*np.sin(np.pi*t)*dt, 0, 1)  # update Delta   
-        # else:
-        #     Delta = 1 
-
-        # # calculate Delta dot 
-        # if Delta < 1:
-        #     Delta_dot = np.pi/2*np.sin(np.pi*t) # compute delta dot
-        #     t =+ dt # update time
-        # else:
-        #     Delta_dot = 0 #transformation complete
-        #     Delta = 1
-        # # print(Delta_dot)
-        # t =+ dt # update time
-
-        # # print(t)
-        # # print("Delta",Delta_dot)
-        # # print("lambda",lamb)
-
-        # # if iter >= 205:
-        # #     time.sleep(3)
-
-        # # print("iterations:", iter)
-        # lamb_list.append(lamb.copy())
-        # Delta_list.append(Delta)
-        # target_list.append(current_target_shape)
+        # print("iterations:", iter)
+        lamb_list.append(lamb.copy())
+        Delta_list.append(Delta)
+        target_list.append(target_shape)
 
         ##########################################################################################
         # print("a_cur:",a_cur)
@@ -291,9 +302,9 @@ while(1):
 
         ## Delta cur is used to get the current convex combination CBF, and Delta target is used to calculate h3 (time varying CBF)!
 
-        # si_barrier_cert_tv, idx_sel, (w1_sel, w2_sel) = pick_cert_for_Delta(Delta_cur, desired_target_shape)
-        si_barrier_cert_tv = create_single_integrator_barrier_certificate_time_varying(Delta=Delta,lamb=lamb,target_shape=current_target_shape,t=t
-                                                                                       ,barrier_gain=1,safety_radius=radius
+        # si_barrier_cert_tv, idx_sel, (w1_sel, w2_sel) = pick_cert_for_Delta(Delta_cur, target_shape)
+        si_barrier_cert_tv = create_single_integrator_barrier_certificate_time_varying(Delta=Delta,lamb=lamb,target_shape=target_shape,t=t
+                                                                                       ,barrier_gain=10,safety_radius=radius
                                                                                        ,safety_a=a,safety_b=b)  
 
         # si_barrier_cert_tv = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a,safety_b=b)
@@ -323,60 +334,29 @@ while(1):
 
         # g_objects.append(g)
 
-         ############################# for plotting only #######################################   
-        for i in range(N):
-            # center the visualization where your ellipse was placed
-            cx = x[0, i] + L * np.cos(x[2, i])
-            cy = x[1, i] + L * np.sin(x[2, i])
-
-            # grid around the center
-            Rvis = 1.2 * max(radius, a, b, w/2.0)
-            xs = np.linspace(cx - Rvis, cx + Rvis, 181)
-            ys = np.linspace(cy - Rvis, cy + Rvis, 181)
-            XX, YY = np.meshgrid(xs, ys)
-
-            EX = cx - XX
-            EY = cy - YY
-
-            # rotate into agent i's frame (use -theta_i)
-            cth = np.cos(thetas[i]); sth = np.sin(thetas[i])
-            U =  cth*EX + sth*EY
-            V = sth*EX - cth*EY
-
-            # the four barriers on the grid (vectorized)
-            p = 3
-            h_circ_g  = (U / radius)**2 + (V / radius)**2 - 1.0
-            h_ellip_g = (U / a)**2 + (V / b)**2 - 1.0
-            h_sq_g    = (np.abs(U)**p + np.abs(V)**p)**(1.0/p) - w/2.0
-
-            # stable log-sum-exp "triangle"
-            L1 = 4*U + 4*np.sqrt(3)*V
-            L2 = -8*U
-            L3 = 4*U - 4*np.sqrt(3)*V
-            M  = np.maximum.reduce([L1, L2, L3])
-            h_tri_g = (3.0/5.0) * (M + np.log(np.exp(L1-M) + np.exp(L2-M) + np.exp(L3-M))) - 1.0
-
-            # same convex combo (h_1)
-            h_cur_g = lamb[0]*h_circ_g + lamb[1]*h_ellip_g + lamb[2]*h_tri_g + lamb[3]*h_sq_g
-
-            if current_target_shape == 1:
-                h_tv_g = (1 - Delta) * h_cur_g + Delta * h_circ_g
-            elif current_target_shape == 2:
-                h_tv_g = (1 - Delta) * h_cur_g + Delta * h_ellip_g
-            elif current_target_shape == 3:
-                h_tv_g = (1 - Delta) * h_cur_g + Delta * h_tri_g
-            elif current_target_shape == 4:
-                h_tv_g = (1 - Delta) * h_cur_g + Delta * h_sq_g
-            else:
-                h_tv_g = h_cur_g
-
-            # draw the 0-level set for agent i
-            scale = 0.45
-            Xscaled = cx + scale * (XX - cx)
-            Yscaled = cy + scale * (YY - cy)
-            cs = r.axes.contour(Xscaled, Yscaled, h_tv_g, levels=[0], colors=[CM[i]], linewidths=2, zorder=3)
-            g_objects.append(cs)  # so you can remove them next frame
-        ##########################################################################################################
+        ############################# for plotting only #######################################
+        # error = x[:] - x[:]
+        # # circular CBF
+        # h_circ = (error[0]*error[0] + error[1]*error[1]) - np.power(safety_radius, 2)
+        # # ellipitical CBF
+        # error_1 = (error[0]*np.cos(theta[j])+error[1]*np.sin(theta[j])) / safety_a
+        # error_2 = (error[0]*np.sin(theta[j])-error[1]*np.cos(theta[j])) / safety_b 
+        # h_ellip = error_1**2 + error_2**2 - 1 
+        # # calculate the current h (convex combination)
+        # h_prev = lamb[0] * h_circ +  lamb[1] * h_ellip 
+        # if target_shape == 1:
+        #         # calculate h_3 
+        #         h_tv = (1-Delta) * h_prev + Delta * h_circ 
+        # if target_shape == 1:
+        
+        #########################################################################################
+        # Create and add ellipses to the axes
+        # for i in range(N):
+        #     ellipse = Ellipse(xy=(x[0, i] + L * np.cos(x[2, i]), x[1, i] + L * np.sin(x[2, i])),
+        #                     width=a_cur*0.9, height=b_cur*0.9, angle=np.degrees(thetas[i]),
+        #                     facecolor='none', edgecolor=CM[i], linewidth=2)
+        #     r.axes.add_patch(ellipse)
+        #     g_objects.append(ellipse)  # Keep track of the patches       
 
         # Set the velocities by mapping the single-integrator inputs to unciycle inputs
         r.set_velocities(np.arange(N), dxu)
