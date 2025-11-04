@@ -59,9 +59,9 @@ def create_single_integrator_barrier_certificate(barrier_gain=100, safety_radius
         A = np.zeros((num_constraints, 2*N))
         b = np.zeros(num_constraints)
         H = sparse(matrix(2*np.identity(2*N)))
+        h_min = np.inf
 
         count = 0
-           
 
         #Centralized QP
         for i in range(N-1):
@@ -76,6 +76,9 @@ def create_single_integrator_barrier_certificate(barrier_gain=100, safety_radius
 
                 count += 1
 
+                if h < h_min:
+                    h_min = h
+
         # Threshold control inputs before QP
         norms = np.linalg.norm(dxi, 2, 0)
         idxs_to_normalize = (norms > magnitude_limit)
@@ -84,7 +87,7 @@ def create_single_integrator_barrier_certificate(barrier_gain=100, safety_radius
         f = -2*np.reshape(dxi, 2*N, order='F')
         result = qp(H, matrix(f), matrix(A), matrix(b))['x']
 
-        return np.reshape(result, (2, -1), order='F')
+        return np.reshape(result, (2, -1), order='F'), h_min
 
     return f
 
@@ -274,6 +277,7 @@ def create_single_integrator_barrier_certificate_ellipse(barrier_gain=100, safet
         A = np.zeros((num_constraints, 2*N))
         b = np.zeros(num_constraints)
         H = sparse(matrix(2 * np.identity(2*N)))
+        h_min = np.inf
 
         count = 0
         # theta=theta+np.pi/4
@@ -299,19 +303,18 @@ def create_single_integrator_barrier_certificate_ellipse(barrier_gain=100, safet
                 h_ellip_dot1 = 2.0 * (u * c * inv_a2 + v * s * inv_b2)        # ∂/∂ex
                 h_ellip_dot2 = 2.0 * (-u * s * inv_a2 + v * c * inv_b2)       # ∂/∂ey
 
-                # if np.mod(i,2) == 0:
                 A[count, 2*i] = -h_ellip_dot1
                 A[count, 2*i+1] = -h_ellip_dot2
                 A[count, 2*j] = h_ellip_dot1
                 A[count, 2*j+1] = h_ellip_dot2
-                # else:
-                #     A[count, 2*i] = -2 * ((error[0])*np.cos(theta[i])-(error[1])*np.sin(theta[i]))*np.cos(theta[i])/ safety_b**2 - 2 * ((error[0]-safety_a)*np.sin(theta[i])+(error[1])*np.cos(theta[i]))*np.sin(theta[i])/ safety_a**2
-                #     A[count, 2*i+1] = -2 * ((error[0])*np.cos(theta[i])-(error[1])*np.sin(theta[i]))*-np.sin(theta[i])/ safety_b**2 - 2 * ((error[0])*np.sin(theta[i])+(error[1])*np.cos(theta[i]))*np.cos(theta[i])/ safety_a**2
-                #     A[count, 2*j] = 2 * ((error[0])*np.cos(theta[i])-(error[1])*np.sin(theta[i]))*np.cos(theta[i])/ safety_b**2 + 2 * ((error[0])*np.sin(theta[i])+(error[1])*np.cos(theta[i]))*np.sin(theta[i])/ safety_a**2
-                #     A[count, 2*j+1] = 2 * ((error[0])*np.cos(theta[i])-(error[1])*np.sin(theta[i]))*-np.sin(theta[i])/ safety_b**2 + 2 * ((error[0])*np.sin(theta[i])+(error[1])*np.cos(theta[i]))*np.cos(theta[i])/ safety_a**2
+        
 
                 b[count] = barrier_gain * h**3
                 count += 1
+
+                if h < h_min:
+                    h_min = h
+
 
         # Threshold control inputs before QP
         norms = np.linalg.norm(dxi, 2, axis=0)
@@ -321,7 +324,7 @@ def create_single_integrator_barrier_certificate_ellipse(barrier_gain=100, safet
         f = -2 * np.reshape(dxi, (2*N,), order='F')
         result = qp(H, matrix(f), matrix(A), matrix(b))['x']
 
-        return np.reshape(result, (2, -1), order='F')
+        return np.reshape(result, (2, -1), order='F'), h_min
 
     return f
 
@@ -689,7 +692,13 @@ def create_single_integrator_barrier_certificate_time_varying(Delta, lamb,target
         f = -2 * np.reshape(dxi, (2*N,), order='F')
         result = qp(H, matrix(f), matrix(A), matrix(b))['x']
 
-        return np.reshape(result, (2, -1), order='F')
+        result = np.reshape(result, (2, -1), order='F')
+        
+        norms2 = np.linalg.norm(result, 2, axis=0)
+        idxs_to_normalize2 = (norms2 > magnitude_limit)
+        result[:, idxs_to_normalize2] *= magnitude_limit / norms2[idxs_to_normalize2]
+
+        return result
 
     return f
 

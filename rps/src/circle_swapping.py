@@ -306,8 +306,8 @@ while(1):
 
         ############################# selection ########################################
         # Use the second single-integrator-to-unicycle mapping to map to unicycle
-        dxu_cir = si_to_uni_dyn(dxi_cir, x) # circular
-        dxu_ellip = si_to_uni_dyn(dxi_ellip, x) # elliptical
+        dxi_cir, h_min_cir = si_barrier_cert_cir(dxi, x_si)                # the first barrier being circular
+        dxi_ellip, h_min_ellip = si_barrier_cert_ellip(dxi, x_si,thetas)     # the second barrier being elliptical
         
         # Default shape
         # dxu = dxu_cir
@@ -321,8 +321,17 @@ while(1):
         norm_dxi_ellip_list.append(norm_dxi_ellip)
 
         # Finding s_t, which is the shape we are morphing to
-        desired_target_shape = np.argmax([norm_dxi_cir,norm_dxi_ellip]) + 1 # s_t (shape to morph into) (1 is circle, 2 is ellipse)
+        # desired_target_shape = np.argmax([norm_dxi_cir,norm_dxi_ellip]) + 1 # s_t (shape to morph into) (1 is circle, 2 is ellipse)
+        sorted_target_shapes = np.argsort([-norm_dxi_cir,-norm_dxi_ellip]) # sorted list
         # print("index:",desired_target_shape)
+
+        # h_min from each certificate
+        hmins = np.array([h_min_cir, h_min_ellip], dtype=float)
+
+        for i in range(2): # just 2 here 
+            if hmins[sorted_target_shapes[i]] > 0:
+                desired_target_shape = sorted_target_shapes[i] + 1 
+                break
 
         ######################################################################################
         if prev_time is None:
@@ -338,22 +347,19 @@ while(1):
         
         ## Delta = (1-cos(pi*t))/2 for t \in [0,1), and = 1 if t >= 1
         ## switch if shape has been reached, and set lambda to 1, if target no reached then don't switch
-        if 0 <= t < 1:
-            Delta = np.clip(Delta + np.pi/2*np.sin(np.pi*t)*dt, 0, 1)  # update Delta   
+        if 0 <= t < 1*2:
+            Delta = np.clip(Delta + np.pi/2/2*np.sin(np.pi/2*t)*dt, 0, 1)  # update Delta   
         else:
             Delta = 1 
-
         # calculate Delta dot 
         if Delta < 1:
-            Delta_dot = np.pi/2*np.sin(np.pi*t) # compute delta dot
+            Delta_dot = np.pi/2/2*np.sin(np.pi/2*t) # compute delta dot
             # t =+ dt # update time
         else:
             Delta_dot = 0 #transformation complete
             Delta = 1
         # print(Delta_dot)
         t = t + dt # update time
-
-
         if current_target_shape != desired_target_shape:
             if Delta == 1: # completed transformation to another shape and another target is selected        
                 for i in range(CBF_n):
@@ -365,8 +371,7 @@ while(1):
                         lamb[i] = 0   # (1-Delta)*lamb[i] 
                 current_target_shape = desired_target_shape # switch target shape
                 Delta = 0 # reset Delta
-                t = 0 # reset time
-            # else: # has not completed                      
+                t = 0 # reset time                  
 
 
         # print(t)

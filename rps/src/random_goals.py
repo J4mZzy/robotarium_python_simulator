@@ -21,7 +21,7 @@ iterations = 1000
 ## The arena is bounded between x \in (-1.6,1.6)  y\in (-1,1) 
 
 # Number of robots
-N = 16 # 2,4,8,11,16,20
+N = 11 # 2,4,8,11,16,20
 
 # Layout params
 rect_width   = 2.5
@@ -75,7 +75,7 @@ else:
     goals_top = np.vstack([goals_top_x, goals_top_y, np.full(N, -np.pi/2)])
 
 # ----- Random unique assignment of goals to robots -----
-rng = np.random.default_rng(7)   # Reproducibility, using seed 1,2,3,4,5 for experiments
+rng = np.random.default_rng(2)   # Reproducibility, using seed 1,2,3,4,5 for experiments
 perm = rng.permutation(N)
 goal_points = goals_top[:, perm]    # robot i -> column i of goal_points
 
@@ -382,7 +382,7 @@ while(1):
         norm_dxi_square_list.append(norm_dxi_sqaure)
 
         # Finding s_t, which is the shape we are morphing to
-        sorted_target_shapes = np.argsort([-norm_dxi_cir,-norm_dxi_ellip,-norm_dxi_tri,-norm_dxi_sqaure]) # s_t (shape to morph into) (1 is circle, 2 is ellipse, 3 is triangle, 4 is square)
+        sorted_target_shapes = np.argsort([-norm_dxi_cir,-norm_dxi_ellip,-norm_dxi_tri,-norm_dxi_sqaure]) # sorted list
         # print("index:",desired_target_shape)
 
         # h_min from each certificate
