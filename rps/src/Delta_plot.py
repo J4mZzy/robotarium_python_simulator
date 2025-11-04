@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 # Load data
 Deltas = np.load('Delta_list.npy')
 lambs = np.load("lamb_list.npy")
-print(lambs.shape)
+# print(lambs.shape)
 
 T = lambs.shape[0]
 index = np.zeros(T)
@@ -20,6 +20,6 @@ plt.rcParams['text.usetex'] = True  # Enable LaTeX rendering
 # Plot with different line styles and thickness
 iterations = np.arange(T)
 plt.plot(iterations, Deltas,  color='b')
-# plt.plot(iterations, index, marker='o', linestyle='none', markersize=3, color='b')
+plt.plot(iterations, index, marker='o', linestyle='none', markersize=3, color='r')
 
 plt.show()

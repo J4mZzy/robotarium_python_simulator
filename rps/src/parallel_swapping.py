@@ -292,8 +292,8 @@ while(1):
         # Use the second single-integrator-to-unicycle mapping to map to unicycle
         dxu_cir = si_to_uni_dyn(dxi_cir, x) # circular
         dxu_ellip = si_to_uni_dyn(dxi_ellip, x) # elliptical
-        dxu_sqaure = si_to_uni_dyn(dxi_square, x) # square
-        dxu_tri = si_to_uni_dyn(dxi_tri, x) # elliptical
+        # dxu_sqaure = si_to_uni_dyn(dxi_square, x) # square
+        # dxu_tri = si_to_uni_dyn(dxi_tri, x) # elliptical
         
         # Default shape
         # dxu = dxu_cir

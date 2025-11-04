@@ -528,7 +528,7 @@ def create_single_integrator_barrier_certificate_triangle(barrier_gain=100, magn
 
 
 
-def create_single_integrator_barrier_certificate_time_varying(Delta, lamb,target_shape, t, safety_radius=0.17, barrier_gain=100, safety_a=0.17, safety_b=0.12, magnitude_limit=0.2):
+def create_single_integrator_barrier_certificate_time_varying(Delta, lamb,target_shape, Delta_dot, safety_radius=0.17, barrier_gain=100, safety_a=0.17, safety_b=0.12, magnitude_limit=0.2):
     """Creates a barrier certificate for a single-integrator system with circle to elliptical time varying safety region.
     
     barrier_gain: double (controls how quickly agents can approach each other. lower = slower)
@@ -566,11 +566,6 @@ def create_single_integrator_barrier_certificate_time_varying(Delta, lamb,target
         A = np.zeros((num_constraints, 2*N))
         b = np.zeros(num_constraints)
         H = sparse(matrix(2 * np.identity(2*N)))
-
-        if Delta < 1:
-            Delta_dot = np.pi/2*np.sin(np.pi*t) # compute delta dot
-        else:
-            Delta_dot = 0
         
         count = 0
 
@@ -908,11 +903,13 @@ def create_single_integrator_barrier_certificate_with_obstacles(barrier_gain=100
         b = np.zeros(num_constraints)
         #H = sparse(matrix(2*np.identity(2*N)))
         H = 2*np.identity(2*N)
+        h_min = np.inf
 
         count = 0
         for i in range(N-1):
             for j in range(i+1,N):
                 error = x[:, i] - x[:, j]
+                # h = (error[0]*error[0] + error[1]*error[1]) - np.power(safety_radius, 2)
                 h = (error[0]/safety_radius)**2 + (error[1]/safety_radius)**2 - 1 
 
                 A[count, (2*i, (2*i+1))] = -2 * error/safety_radius**2
@@ -920,6 +917,8 @@ def create_single_integrator_barrier_certificate_with_obstacles(barrier_gain=100
                 b[count] = barrier_gain*np.power(h, 3) #    cubic
                 # b[count] = barrier_gain*h
                 count += 1
+            if h < h_min:
+                h_min = h
         
         for i in range(N):
                     xi = x[:, i]
@@ -943,7 +942,7 @@ def create_single_integrator_barrier_certificate_with_obstacles(barrier_gain=100
         result = qp(matrix(H), matrix(f), matrix(A), matrix(b))['x']
         #result = solver2.solve_qp(H, f, A, b, 0)[0]
 
-        return np.reshape(result, (2, N), order='F')
+        return np.reshape(result, (2, N), order='F'), h_min
 
     return f
 
@@ -991,6 +990,7 @@ def create_single_integrator_barrier_certificate_ellipse_with_obstacles(barrier_
         A = np.zeros((num_constraints, 2*N))
         b = np.zeros(num_constraints)
         H = sparse(matrix(2 * np.identity(2*N)))
+        h_min = np.inf
 
         count = 0
         # theta=theta+np.pi/4
@@ -1025,6 +1025,10 @@ def create_single_integrator_barrier_certificate_ellipse_with_obstacles(barrier_
                 b[count] = barrier_gain * h**3
                 count += 1
 
+                if h < h_min:
+                    h_min = h
+
+
         for i in range(N):
                     xi = x[:, i]
                     for k in range(K):
@@ -1045,7 +1049,7 @@ def create_single_integrator_barrier_certificate_ellipse_with_obstacles(barrier_
         f = -2 * np.reshape(dxi, (2*N,), order='F')
         result = qp(H, matrix(f), matrix(A), matrix(b))['x']
 
-        return np.reshape(result, (2, -1), order='F')
+        return np.reshape(result, (2, -1), order='F'), h_min
 
     return f
 
@@ -1090,6 +1094,7 @@ def create_single_integrator_barrier_certificate_triangle_with_obstacles(barrier
         A = np.zeros((num_constraints, 2*N))
         b = np.zeros(num_constraints)
         H = sparse(matrix(2 * np.identity(2*N)))
+        h_min = np.inf
 
         count = 0
         # theta=theta+np.pi/4
@@ -1098,18 +1103,29 @@ def create_single_integrator_barrier_certificate_triangle_with_obstacles(barrier
         for i in range(N-1):
             for j in range(i+1,N):
                 error = x[:, i] - x[:, j]
-                ## Rotation
-                error_1 = (error[0]*np.cos(theta[i])+error[1]*np.sin(theta[i])) 
-                error_2 = (error[0]*np.sin(theta[i])-error[1]*np.cos(theta[i])) 
+                ex, ey = error[0], error[1]
+                c = np.cos(theta[i]); s = np.sin(theta[i])
 
-                h = 3/5 * np.log(np.exp(4*error_1+4*np.sqrt(3)*error_2) + np.exp(-8*error_1) + np.exp(4*error_1-4*np.sqrt(3)*error_2))- 1
+                # --- rotate by +θ: [u;v] = [[c,-s],[s,c]] [ex;ey]
+                u =  c*ex - s*ey
+                v =  s*ex + c*ey
 
-                h_tri_dot1 = 12*((np.sqrt(3)*np.sin(theta[i])+np.cos(theta[i]))*np.exp(8*np.sqrt(3)*error_2 + 12*error_1) 
-                              - 2*np.cos(theta[i])*np.exp(4*np.sqrt(3)*error_2)-(np.sqrt(3)*np.sin(theta[i])-np.cos(theta[i]))*np.exp(12*error_1))/ (5*(np.exp(8*np.sqrt(3)*error_2+12*error_1)
-                              + np.exp(4*np.sqrt(3)*error_2) + np.exp(12*error_1)))
-                h_tri_dot2 = 12*((np.sin(theta[i])-np.sqrt(3)*np.cos(theta[i]))*np.exp(8*np.sqrt(3)*error_2 + 12*error_1)
-                              - 2*np.sin(theta[i])*np.exp(4*np.sqrt(3)*error_2)+(np.sin(theta[i])+np.sqrt(3)*np.cos(theta[i]))*np.exp(12*error_1))/ (5*((np.exp(8*np.sqrt(3)*error_2)+1)*np.exp(12*error_1)
-                              + np.exp(4*np.sqrt(3)*error_2)))
+                # triangle (log-sum-exp), numerically stable
+                rt3 = np.sqrt(3.0)
+                L1 = 4*u + 4*rt3*v
+                L2 = -8*u
+                L3 = 4*u - 4*rt3*v
+                M  = np.maximum.reduce([L1, L2, L3])
+                w1 = np.exp(L1 - M); w2 = np.exp(L2 - M); w3 = np.exp(L3 - M)
+                S  = w1 + w2 + w3
+                h = (3.0/5.0) * (M + np.log(S)) - 1.0
+
+                # triangle: first ∂h/∂u, ∂h/∂v via softmax weights, then chain to (ex,ey)
+                a1 = w1 / S; a2 = w2 / S; a3 = w3 / S
+                h_u = (3.0/5.0) * (4*a1 - 8*a2 + 4*a3)
+                h_v = (3.0/5.0) * (4*rt3*(a1 - a3))
+                h_tri_dot1 = c*h_u + s*h_v                                      # ∂/∂ex
+                h_tri_dot2 = -s*h_u + c*h_v                                     # ∂/∂ey
 
                 # if np.mod(i,2) == 0:
                 A[count, 2*i] = -h_tri_dot1
@@ -1119,6 +1135,10 @@ def create_single_integrator_barrier_certificate_triangle_with_obstacles(barrier
 
                 b[count] = barrier_gain * h**3
                 count += 1
+
+                if h < h_min:
+                    h_min = h
+
 
         for i in range(N):
                     xi = x[:, i]
@@ -1140,7 +1160,7 @@ def create_single_integrator_barrier_certificate_triangle_with_obstacles(barrier
         f = -2 * np.reshape(dxi, (2*N,), order='F')
         result = qp(H, matrix(f), matrix(A), matrix(b))['x']
 
-        return np.reshape(result, (2, -1), order='F')
+        return np.reshape(result, (2, -1), order='F'), h_min
 
     return f
 
@@ -1190,27 +1210,32 @@ def create_single_integrator_barrier_certificate_square_with_obstacles(barrier_g
         b = np.zeros(num_constraints)
         H = sparse(matrix(2*np.identity(2*N)))
         p = norm
+        h_min = np.inf
 
         count = 0
         #Centralized QP
         for i in range(N-1):
             for j in range(i+1,N):
                 error = x[:, i] - x[:, j]
-                ## Rotation
-                error_1 = (error[0]*np.cos(theta[i])+error[1]*np.sin(theta[i])) 
-                error_2 = (error[0]*np.sin(theta[i])-error[1]*np.cos(theta[i])) 
+                ex, ey = error[0], error[1]
+                c = np.cos(theta[i]); s = np.sin(theta[i])
+
+                # --- rotate by +θ: [u;v] = [[c,-s],[s,c]] [ex;ey]
+                u =  c*ex - s*ey
+                v =  s*ex + c*ey
                 
                 ## p-norm h = ||R(theta)*x||_p - r
-                h = (np.abs(error_1)**p + np.abs(error_2)**p)**(1.0/p) - safety_width/2.0
-
-                h_square_dot1 = (np.sin(theta[i])*error_2*np.abs(error_2) + np.cos(theta[i])*error_1*np.abs(error_1))/(error_2**2*np.abs(error_2) + error_1**2*np.abs(error_1))**(2/3)
-                h_square_dot2 = (np.sin(theta[i])*error_1*np.abs(error_1) - np.cos(theta[i])*error_2*np.abs(error_2))/(error_1**2*np.abs(error_1) + error_2**2*np.abs(error_2))**(2/3)
-
-                ## p-norm h = ||R(theta)*x||_p - r
-                # h = (np.power(np.power(np.abs(error[0]),p) + np.power(np.abs(error[1]),p),1/p)) - safety_width/2
-
-                # h_square_dot1 = error[0] * np.power(np.abs(error[0]),p-2) / (np.power(np.power(np.abs(error[0]),p) + np.power(np.abs(error[1]),p),(p-1)/p))
-                # h_square_dot2 = error[1] * np.power(np.abs(error[1]),p-2) / (np.power(np.power(np.abs(error[0]),p) + np.power(np.abs(error[1]),p),(p-1)/p))
+                # h = (np.abs(error_1)**p + np.abs(error_2)**p)**(1.0/p) - safety_width/2.0
+                h = (np.abs(u)**p + np.abs(v)**p)**(1.0/p) - safety_width/2.0
+                # h_square_dot1 = (np.sin(theta[i])*error_2*np.abs(error_2) + np.cos(theta[i])*error_1*np.abs(error_1))/(error_2**2*np.abs(error_2) + error_1**2*np.abs(error_1))**(2/3)
+                # h_square_dot2 = (np.sin(theta[i])*error_1*np.abs(error_1) - np.cos(theta[i])*error_2*np.abs(error_2))/(error_1**2*np.abs(error_1) + error_2**2*np.abs(error_2))**(2/3)
+                
+                # 3-norm “square”
+                den = (np.abs(u)**p + np.abs(v)**p)**((p-1)/p)
+                uu = u * np.abs(u)
+                vv = v * np.abs(v)
+                h_square_dot1 = (c*uu + s*vv) / den                            # ∂/∂ex
+                h_square_dot2 = (-s*uu + c*vv) / den                           # ∂/∂ey
 
 
                 A[count, 2*i] = -h_square_dot1
@@ -1220,6 +1245,9 @@ def create_single_integrator_barrier_certificate_square_with_obstacles(barrier_g
 
                 b[count] = barrier_gain*np.power(h, 3)
                 count += 1
+
+                if h < h_min:
+                    h_min = h
 
         for i in range(N):
                     xi = x[:, i]
@@ -1241,11 +1269,11 @@ def create_single_integrator_barrier_certificate_square_with_obstacles(barrier_g
         f = -2*np.reshape(dxi, 2*N, order='F')
         result = qp(H, matrix(f), matrix(A), matrix(b))['x']
 
-        return np.reshape(result, (2, -1), order='F')
+        return np.reshape(result, (2, -1), order='F'), h_min
 
     return f
 
-def create_single_integrator_barrier_certificate_time_varying_with_obstacles(Delta, lamb,target_shape, t, safety_radius=0.17, barrier_gain=100, safety_a=0.17, safety_b=0.12, magnitude_limit=0.2):
+def create_single_integrator_barrier_certificate_time_varying_with_obstacles(Delta, lamb,target_shape, Delta_dot, safety_radius=0.17, barrier_gain=100, safety_a=0.17, safety_b=0.12, magnitude_limit=0.2):
     """Creates a barrier certificate for a single-integrator system with circle to elliptical time varying safety region.
     
     barrier_gain: double (controls how quickly agents can approach each other. lower = slower)
@@ -1295,65 +1323,18 @@ def create_single_integrator_barrier_certificate_time_varying_with_obstacles(Del
         #     Delta_dot = 1/T # compute delta dot
         # else:
         #     Delta_dot = 0
-
-        ##  Delta = sin(t) 
-
-        ## Delta = (1-cos(pi t))/2 for t \in [0,pi), and = 1 if t >= \pi
-        if Delta < 1:
-            Delta_dot = np.pi/2*np.sin(np.pi*t) # compute delta dot
-        else: # Delta >=1 , Delta_dot is 0 
-            Delta_dot = 0
         
         count = 0
 
         # Centralized QP
         for i in range(N-1):
             for j in range(i+1,N):
+        # for i in range(N):
+        #     for j in range(N):
+        #         if i == j:
+        #             continue
                 error = x[:, i] - x[:, j]
                 ###################################### library ########################################
-                # # circular CBF
-                # h_circ = (error[0]/safety_radius)**2 + (error[1]/safety_radius)**2 - 1
-
-                # # elliptical
-                # error_1 = (error[0]*np.cos(theta[i])+error[1]*np.sin(theta[i])) 
-                # error_2 = (error[0]*np.sin(theta[i])-error[1]*np.cos(theta[i])) 
-                # h_ellip = (error_1/safety_a )**2 + (error_2/safety_b)**2 - 1    
-
-                # ## smooth square (3- norm used)
-                # safety_width = 0.4
-                # h_square = (np.abs(error_1)**3 + np.abs(error_2)**3)**(1.0/3) - safety_width/2.0
-
-                # # smooth triangle
-                # h_tri = 3/5 * np.log(np.exp(4*error_1+4*np.sqrt(3)*error_2) + np.exp(-8*error_1) + np.exp(4*error_1-4*np.sqrt(3)*error_2))- 1
-
-                # ########################################################################################
-                # # calculate the previous h (convex combination)
-                # h_cur = lamb[0] * h_circ +  lamb[1] * h_ellip + lamb[2] * h_tri + lamb[3] * h_square  # circle and ellipse for experiment 1 n 2
-
-                
-                # # h_circ dot
-                # h_circ_dot1 = 2 * error[0]/safety_radius**2
-                # h_circ_dot2 = 2 * error[1]/safety_radius**2
-
-                # # h_ellip dot
-                # h_ellip_dot1 = 2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.cos(theta[i])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*np.sin(theta[i])/ safety_b**2
-                # h_ellip_dot2 = 2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.sin(theta[i])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*-np.cos(theta[i])/ safety_b**2
-                
-                # # h_tri dot
-                # h_tri_dot1 = 12*((np.sqrt(3)*np.sin(theta[i])+np.cos(theta[i]))*np.exp(8*np.sqrt(3)*error_2 + 12*error_1) 
-                #               - 2*np.cos(theta[i])*np.exp(4*np.sqrt(3)*error_2)-(np.sqrt(3)*np.sin(theta[i])-np.cos(theta[i]))*np.exp(12*error_1))/ (5*(np.exp(8*np.sqrt(3)*error_2+12*error_1)
-                #               + np.exp(4*np.sqrt(3)*error_2) + np.exp(12*error_1)))
-                # h_tri_dot2 = 12*((np.sin(theta[i])-np.sqrt(3)*np.cos(theta[i]))*np.exp(8*np.sqrt(3)*error_2 + 12*error_1)
-                #               - 2*np.sin(theta[i])*np.exp(4*np.sqrt(3)*error_2)+(np.sin(theta[i])+np.sqrt(3)*np.cos(theta[i]))*np.exp(12*error_1))/ (5*((np.exp(8*np.sqrt(3)*error_2)+1)*np.exp(12*error_1)
-                #               + np.exp(4*np.sqrt(3)*error_2)))
-                
-                # # h_square dot
-                # h_square_dot1 = (np.sin(theta[i])*error_2*np.abs(error_2) + np.cos(theta[i])*error_1*np.abs(error_1))/((np.abs(error_2)**3 + np.abs(error_1)**3 )**(2/3))
-                # h_square_dot2 = (np.sin(theta[i])*error_1*np.abs(error_1) - np.cos(theta[i])*error_2*np.abs(error_2))/((np.abs(error_1)**3 + np.abs(error_2)**3 )**(2/3))
-                
-                # # Current h_dot (circ,ellip,tri,square)
-                # h_cur_dot1 = lamb[0] * h_circ_dot1 +  lamb[1] * h_ellip_dot1 + lamb[2] * h_tri_dot1 +  lamb[3] * h_square_dot1
-                # h_cur_dot2 = lamb[0] * h_circ_dot2 +  lamb[1] * h_ellip_dot2 + lamb[2] * h_tri_dot2 +  lamb[3] * h_square_dot2
                 
                 ex, ey = error[0], error[1]
                 c = np.cos(theta[i]); s = np.sin(theta[i])
@@ -1398,8 +1379,7 @@ def create_single_integrator_barrier_certificate_time_varying_with_obstacles(Del
                 h_ellip_dot2 = 2.0 * (-u * s * inv_a2 + v * c * inv_b2)       # ∂/∂ey
 
                 # 3-norm “square”
-                eps = 1e-12
-                den = (np.abs(u)**3 + np.abs(v)**3 + eps)**(2.0/3.0)
+                den = (np.abs(u)**3 + np.abs(v)**3)**(2.0/3.0)
                 uu = u * np.abs(u)
                 vv = v * np.abs(v)
                 h_square_dot1 = (c*uu + s*vv) / den                            # ∂/∂ex
@@ -1412,12 +1392,11 @@ def create_single_integrator_barrier_certificate_time_varying_with_obstacles(Del
                 h_tri_dot1 = c*h_u + s*h_v                                      # ∂/∂ex
                 h_tri_dot2 = -s*h_u + c*h_v                                     # ∂/∂ey
 
-                # blended gradient (for your current h_cur)
+                # blended gradient
                 h_cur_dot1 = lamb[0]*h_circ_dot1 + lamb[1]*h_ellip_dot1 + lamb[2]*h_tri_dot1 + lamb[3]*h_square_dot1
                 h_cur_dot2 = lamb[0]*h_circ_dot2 + lamb[1]*h_ellip_dot2 + lamb[2]*h_tri_dot2 + lamb[3]*h_square_dot2
                 #########################################################################################
                
-                # if 1 switching current to circle, if 2 switching current to ellipse
                 if target_shape == 1:
                     h_tv = (1-Delta) * h_cur + Delta * h_circ 
                     # for time derivative 
@@ -1457,7 +1436,7 @@ def create_single_integrator_barrier_certificate_time_varying_with_obstacles(Del
                     A[count, 2*j+1] = (1-Delta) * h_cur_dot2 + Delta * h_square_dot2
                 
                 # class k function and time derivative in delta 
-                b[count] = barrier_gain * h_tv**3 + Delta_dot * diff
+                b[count] = barrier_gain * h_tv**3 + Delta_dot *diff
                 #  Delta_dot * diff
                 count += 1
 
@@ -1481,7 +1460,13 @@ def create_single_integrator_barrier_certificate_time_varying_with_obstacles(Del
         f = -2 * np.reshape(dxi, (2*N,), order='F')
         result = qp(H, matrix(f), matrix(A), matrix(b))['x']
 
-        return np.reshape(result, (2, -1), order='F')
+        result = np.reshape(result, (2, -1), order='F')
+        
+        norms2 = np.linalg.norm(result, 2, axis=0)
+        idxs_to_normalize2 = (norms2 > magnitude_limit)
+        result[:, idxs_to_normalize2] *= magnitude_limit / norms2[idxs_to_normalize2]
+
+        return result
 
     return f
 

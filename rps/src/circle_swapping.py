@@ -214,8 +214,8 @@ CBF_n = 4 # how many CBFs we are using
 
 si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=1,safety_radius=radius)
 si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=0.1,safety_a=a,safety_b=b)
-si_barrier_cert_tri = create_single_integrator_barrier_certificate_triangle_with_obstacles(barrier_gain=1)
-si_barrier_cert_sqaure = create_single_integrator_barrier_certificate_square_with_obstacles(barrier_gain=1,safety_width=w,norm=3)
+# si_barrier_cert_tri = create_single_integrator_barrier_certificate_triangle_with_obstacles(barrier_gain=1)
+# si_barrier_cert_sqaure = create_single_integrator_barrier_certificate_square_with_obstacles(barrier_gain=1,safety_width=w,norm=3)
 
 ######## Remember to change this to 1 when running ellipse ######################
 current_target_shape = 1 # initialize the shape flag as 1 (1 is circle and 2 is ellipse)
@@ -351,7 +351,7 @@ while(1):
             Delta_dot = 0 #transformation complete
             Delta = 1
         # print(Delta_dot)
-        t =+ dt # update time
+        t = t + dt # update time
 
 
         if current_target_shape != desired_target_shape:
@@ -381,7 +381,7 @@ while(1):
         Delta_list.append(Delta)
         target_list.append(current_target_shape)
         ########################################Time varying CBF#####################################
-        si_barrier_cert_tv = create_single_integrator_barrier_certificate_time_varying(Delta=Delta,lamb=lamb,target_shape=current_target_shape,t=t
+        si_barrier_cert_tv = create_single_integrator_barrier_certificate_time_varying(Delta=Delta,lamb=lamb,target_shape=current_target_shape,Delta_dot=Delta_dot
                                                                                        ,barrier_gain=1,safety_radius=radius
                                                                                        ,safety_a=a,safety_b=b)  
 
