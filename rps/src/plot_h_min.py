@@ -16,7 +16,7 @@ T = np.array(trajectories[0]).shape[0]
 h_min = np.full(T, np.inf)
 
 # ---- Barrier parameters (once) ----
-r = 0.25
+r = 0.22
 a = 0.25*0.95 
 b = 0.25 
 p = 3

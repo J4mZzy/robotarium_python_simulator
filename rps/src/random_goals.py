@@ -5,24 +5,28 @@ from rps.utilities.misc import *
 from rps.utilities.controllers import *
 
 import numpy as np
-from matplotlib.patches import Ellipse
 import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
 import time
+
+import matplotlib as mpl
+mpl.rcParams['path.simplify'] = False
+mpl.rcParams['agg.path.chunksize'] = 0
 
 '''This code is for the multi-robot random assignment simulations/experiments'''
 
 # The robots will never reach their goal points so set iteration number (not used here, but if deadlock happens we can make the program stop in short time)
-iterations = 600
+iterations = 1000
 
 ## The arena is bounded between x \in (-1.6,1.6)  y\in (-1,1) 
 
 # Number of robots
-N = 8 # 2,4,8,11,16,20
+N = 16 # 2,4,8,11,16,20
 
 # Layout params
 rect_width   = 2.5
 rect_height  = 1.6
-margin_x     = 0.15         # keep a small margin from left/right edges
+margin_x     = 0.25        
 two_row_thresh = 8          # switch to two rows when N >= 8
 row_gap      = 0.4         # vertical gap between rows on a side
 
@@ -63,7 +67,7 @@ else:
     initial_conditions = np.vstack([initial_x, initial_y, initial_heading])
 
     # Top rows (goals), both face down
-    yT0 =  rect_height/2 - 0.1
+    yT0 =  rect_height/2 + 0.1
     yT1 =  yT0 - row_gap
 
     goals_top_x = np.concatenate([row_x(n0), row_x(n1)])
@@ -71,7 +75,7 @@ else:
     goals_top = np.vstack([goals_top_x, goals_top_y, np.full(N, -np.pi/2)])
 
 # ----- Random unique assignment of goals to robots -----
-rng = np.random.default_rng(5)   # Reproducibility
+rng = np.random.default_rng(2)   # Reproducibility, using seed 1,2,3,4,5 for experiments
 perm = rng.permutation(N)
 goal_points = goals_top[:, perm]    # robot i -> column i of goal_points
 
@@ -85,15 +89,12 @@ r = robotarium.Robotarium(
 
 
 ## Plotting Parameters
-
 #GT color scheme
 # Gold = np.array([179,163,105])/255
 # Navy = np.array([0,48,87])/255
 # piMile= np.array([214,219,212])/255
 # Black = np.array([0,0,0])
 # CM = np.vstack([Gold,Navy,piMile,Black])
-
-
 # CM = np.random.rand(N,3) # Random Colors
 
 # Use a predefined colormap from Matplotlib
@@ -107,46 +108,168 @@ CM = cmap(np.linspace(0, 1, N))  # Generate N colors evenly spaced within the co
 # CM = np.array([[0, 0, 0]] * N)
  
 # Default Barrier Parameters (for visualization) 
-safety_radius_view = 0.15
+safety_radius_view = 0.2
 safety_radius_marker_size = determine_marker_size(r,safety_radius_view) # Will scale the plotted markers to be the diameter of provided argument (in meters)
 font_height_meters = 0.2
 font_height_points = determine_font_size(r,font_height_meters) # Will scale the plotted font height to that of the provided argument (in meters)
-obs_r = 0.14
+obs_r = 0.16 # for visual
 obs_r_marker_size = determine_marker_size(r,obs_r) # Will scale the plotted markers to be the diameter of provided argument (in meters)
 
 # Create single integrator position controller
 si_position_controller = create_si_position_controller()
 
 # Initialize parameters
-radius = 0.25
+radius = 0.22
 a = 0.25
 b = 0.25*0.8
 w = 0.40
+base_shape = 1 # default CBF shape
+
+############################# Plotting helper ######################
+def lse3(L1, L2, L3):
+    """Stable log-sum-exp for arrays."""
+    M = np.maximum.reduce([L1, L2, L3])
+    return M + np.log(np.exp(L1 - M) + np.exp(L2 - M) + np.exp(L3 - M))
+
+def densify_segments(segs, max_step):
+    """Insert points so edges are <= max_step; segs: list of (m x 2) arrays."""
+    out = []
+    for seg in segs:
+        if len(seg) < 2:
+            continue
+        pts = [seg[0]]
+        for a, b in zip(seg[:-1], seg[1:]):
+            d = float(np.hypot(*(b - a)))
+            n = int(np.ceil(d / max_step))
+            if n <= 1:
+                pts.append(b)
+            else:
+                t = np.linspace(0.0, 1.0, n+1)[1:]
+                pts.extend(a + (b - a) * t[:, None])
+        out.append(np.asarray(pts))
+    return out
+
+# Try to use the internal (fast) contour generator
+try:
+    from matplotlib import _contour
+    HAS_CONTOURGEN = True
+except Exception:
+    HAS_CONTOURGEN = False
+
+def init_hvis(ax, N, CM, *, radius, a, b, w, p=3, Rvis_scale=1.4, grid_res=201, line_w=2):
+    """
+    ax: matplotlib axes (e.g., r.axes), N: #agents, CM: (N x 3/4) colors
+    returns a dict 'H' with precomputed fields and artists.
+    """
+    radius = float(radius); a = float(a); b = float(b); w = float(w)
+    rt3 = np.sqrt(3.0)
+
+    # local grid in (u,v) — agent frame
+    Rvis = Rvis_scale * max(radius, a, b, w/2.0)
+    nu = nv = int(grid_res)
+    u_vals = np.linspace(-Rvis, Rvis, nu)
+    v_vals = np.linspace(-Rvis, Rvis, nv)
+    UU, VV = np.meshgrid(u_vals, v_vals)
+
+    # fields that only change if radius/a/b/w/p change
+    h_circ_l  = (UU/radius)**2 + (VV/radius)**2 - 1.0
+    h_ellip_l = (UU/a)**2      + (VV/b)**2      - 1.0
+    h_sq_l    = (np.abs(UU)**p + np.abs(VV)**p)**(1.0/p) - w/2.0
+    L1 =  4*UU + 4*rt3*VV
+    L2 = -8*UU
+    L3 =  4*UU - 4*rt3*VV
+    h_tri_l = (3.0/5.0) * lse3(L1, L2, L3) - 1.0
+    h_fields_local = [h_circ_l, h_ellip_l, h_tri_l, h_sq_l]
+
+    # one LineCollection per agent; add once
+    lc_list = []
+    for i in range(N):
+        lc = LineCollection(
+            [], colors=[CM[i]], linewidths=line_w, zorder=3,
+            antialiased=True, capstyle='round', joinstyle='round'
+        )
+        ax.add_collection(lc)
+        lc_list.append(lc)
+
+    return {
+        'ax': ax, 'N': N, 'CM': CM,
+        'UU': UU, 'VV': VV, 'Rvis': Rvis,
+        'h_fields_local': h_fields_local,
+        'lc_list': lc_list
+    }
+# ---------- per-frame update ----------
+def update_hvis(H, x, thetas, L, base_shape, target_shape, Delta, *, plot_scale=0.45,
+                densify=True, densify_factor=150.0):
+    """
+    Updates the per-agent LineCollections to draw the 0-level of h_tv.
+    base_shape, target_shape in {1,2,3,4}; Delta in [0,1].
+    thetas in radians; x is 3xN (unicycle state).
+    """
+    UU, VV   = H['UU'], H['VV']
+    h_local  = H['h_fields_local']
+    lc_list  = H['lc_list']
+    ax       = H['ax']
+    N        = H['N']
+    Rvis     = H['Rvis']
+
+    # blend ONCE in (u,v)
+    h_base_l = h_local[base_shape  - 1]
+    h_tgt_l  = h_local[target_shape - 1]
+    h_tv_l   = (1.0 - Delta) * h_base_l + Delta * h_tgt_l
+
+    # get the 0-level segments w/o leaving artists in the axes
+    if HAS_CONTOURGEN:
+        cg = _contour.QuadContourGenerator(UU, VV, h_tv_l, None, True, 0)
+        segs_local = cg.create_contour(0.0)   # list of (m x 2) in (u,v)
+    else:
+        cs = ax.contour(UU, VV, h_tv_l, levels=[0], linewidths=0)
+        segs_local = cs.allsegs[0] if getattr(cs, "allsegs", None) else []
+        try: cs.remove()
+        except Exception: pass
+
+    # optional smoothing of polylines
+    if densify and len(segs_local):
+        segs_local = densify_segments(segs_local, max_step=Rvis / densify_factor)
+
+    # update each agent by rigidly transforming local segs
+    for i in range(N):
+        cx = x[0, i] + L*np.cos(x[2, i])
+        cy = x[1, i] + L*np.sin(x[2, i])
+        c  = np.cos(thetas[i]); s = np.sin(thetas[i])
+
+        # world coords: other = (cx,cy) - R(theta_i) @ (scaled [u;v])
+        if len(segs_local) == 0:
+            lc_list[i].set_segments([])
+            continue
+
+        segs_world = [
+            np.column_stack((
+                cx + (c*(plot_scale*seg[:,0]) - s*(plot_scale*seg[:,1])),
+                cy + (s*(plot_scale*seg[:,0]) + c*(plot_scale*seg[:,1]))
+            ))
+            for seg in segs_local
+        ]
+        lc_list[i].set_segments(segs_world)
+
+H = init_hvis(r.axes, N, CM, radius=radius, a=a, b=b, w=w, grid_res=201, line_w=2)
+#########################################################################################
 
 ############################################ CBF Library #######################################################
 # We're working in single-integrator dynamics, and we don't want the robots
 # to collide.  Thus, we're going to use barrier certificates (in a centrialized way)
 CBF_n = 4 # how many CBFs we are using 
-# si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=10,safety_radius=radius)
-# si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a,safety_b=b)
 
 si_barrier_cert_cir = create_single_integrator_barrier_certificate_with_obstacles(barrier_gain=1,safety_radius=radius)
 si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse_with_obstacles(barrier_gain=0.1,safety_a=a,safety_b=b)
 si_barrier_cert_tri = create_single_integrator_barrier_certificate_triangle_with_obstacles(barrier_gain=1)
-si_barrier_cert_sqaure = create_single_integrator_barrier_certificate_square_with_obstacles(barrier_gain=1,safety_width=w,norm=3)
-
-############################# Pre construction for time-varying CBFs ###########################################
-t = 0 
+si_barrier_cert_sqaure = create_single_integrator_barrier_certificate_square_with_obstacles(barrier_gain=10,safety_width=w,norm=3)
 
 ######## Remember to change this to 1 when running ellipse ######################
-current_target_shape = 1 # initialize the shape flag as 1 (1 is circle and 2 is ellipse)
-target_array = np.zeros(CBF_n)
-target_array[current_target_shape-1] = 1
+current_target_shape = 1 # initialize the shape flag as 1 
 
 # Default shape (begin with circle)         
 lamb = np.array([1.0, 0.0, 0.0, 0.0]) # current lambda array (storing the current shape)
 Delta = 0 # Delta
-
 lamb_list = []
 Delta_list = []
 target_list = []
@@ -157,12 +280,11 @@ exp_start_time = time.time()
 # Create SI to UNI dynamics tranformation
 si_to_uni_dyn, uni_to_si_states = create_si_to_uni_mapping()
 
-# define x initially
+# Define x initially
 x = r.get_poses()
 thetas = x[2,:]
 L = 0.05
 # g = r.axes.scatter(x[0,:]+L*np.cos(x[2,:]), x[1,:]+L*np.sin(x[2,:]), s=np.pi/4*safety_radius_marker_size, marker='o', facecolors='none',edgecolors=CM,linewidth=3)
-
 
 # Create Goal Point Markers
 goal_marker_size_m = 0.1
@@ -173,19 +295,19 @@ marker_size_goal = determine_marker_size(r,goal_marker_size_m)
 #Text with goal identification
 goal_caption = ['G{0}'.format(ii) for ii in range(goal_points.shape[1])]
 
-#Arrow for desired orientation (optional)
+# Arrow for desired orientation (optional)
 # goal_orientation_arrows = [r.axes.arrow(goal_points[0,ii], goal_points[1,ii], goal_marker_size_m*np.cos(goal_points[2,ii]), goal_marker_size_m*np.sin(goal_points[2,ii]), width = 0.01, length_includes_head=True, color = CM[ii,:], zorder=-2)
 # for ii in range(goal_points.shape[1])]
 
-#Plot text for caption
+# Plot text for caption
 goal_points_text = [r.axes.text(goal_points[0,ii], goal_points[1,ii], goal_caption[ii], fontsize=font_size, color='k',fontweight='bold',horizontalalignment='center',verticalalignment='center',zorder=-3)
 for ii in range(goal_points.shape[1])]
 goal_markers = [r.axes.scatter(goal_points[0,ii], goal_points[1,ii], s=marker_size_goal, marker='s', facecolors='none',edgecolors=CM[ii,:],linewidth=line_width,zorder=-3)
 for ii in range(goal_points.shape[1])]
 
 ## Obstacles 
-obstacle_1 = r.axes.scatter(-0.8, -0.2, s=obs_r_marker_size, marker='o', facecolors=[1, 0, 0],edgecolors='none',linewidth=line_width,zorder=-3) # [133/255, 116/255, 55/255]
-obstacle_2 = r.axes.scatter(0.8, -0.2, s=obs_r_marker_size, marker='o', facecolors=[0, 0, 1],edgecolors='none',linewidth=line_width,zorder=-3)
+obstacle_1 = r.axes.scatter(-0.6, 0, s=obs_r_marker_size, marker='o', facecolors=[1, 0, 0],edgecolors='none',linewidth=line_width,zorder=-3) # [133/255, 116/255, 55/255]
+obstacle_2 = r.axes.scatter(0.6, 0, s=obs_r_marker_size, marker='o', facecolors=[0, 0, 1],edgecolors='none',linewidth=line_width,zorder=-3)
 
 
 r.step()
@@ -200,12 +322,17 @@ trajectories = {i: [] for i in range(N)}
 # Initialize empty lists to store norm values
 norm_dxi_cir_list = []
 norm_dxi_ellip_list = []
+norm_dxi_tri_list = []
+norm_dxi_square_list = []
 norm_dxi_tv_list = []
 
 ## initialize for loop speed calculation
+t = 0 # initialize time for Delta 
 start_time = None # timer variable in loop
 dt = None
 prev_time = None
+
+##########################################################################
 
 # While the goal is not reached
 while(1):
@@ -218,7 +345,9 @@ while(1):
             trajectories[i].append(x[:, i].copy())  # Store the (x, y) position
 
         # Angles
-        thetas = x[2,:]
+        # thetas = x[2,:]
+        # print(thetas[0]/np.pi*180)
+        # print(x[:,0])
         # To compare distances, only take the first two elements of our pose array.(look ahead dynamics)
         x_si = uni_to_si_states(x)
 
@@ -230,21 +359,18 @@ while(1):
         # Generating safe inputs
 
         dxi_cir = si_barrier_cert_cir(dxi, x_si)                # the first barrier being circular
-        # dxi_cir = si_barrier_cert_ellip(dxi, x_si,thetas)     # the first barrier being elliptical 
         dxi_ellip = si_barrier_cert_ellip(dxi, x_si,thetas)     # the second barrier being elliptical
-        # dxi_ellip = si_barrier_cert_cir(dxi, x_si)            # the second barrier being circular
         dxi_tri = si_barrier_cert_tri(dxi, x_si,thetas)     # the second barrier being elliptical
         dxi_square = si_barrier_cert_sqaure(dxi, x_si,thetas)     # the second barrier being elliptical
+
         ############################# selection ########################################
         # Use the second single-integrator-to-unicycle mapping to map to unicycle
         dxu_cir = si_to_uni_dyn(dxi_cir, x) # circular
         dxu_ellip = si_to_uni_dyn(dxi_ellip, x) # elliptical
         dxu_tri = si_to_uni_dyn(dxi_tri, x) # triangular
-        dxu_tri = si_to_uni_dyn(dxi_square, x) # square
+        dxu_square = si_to_uni_dyn(dxi_square, x) # square
         
         # Default shape
-        # dxu = dxu_cir
-        # For target shape, circle =1, ellipse=2
         norm_dxi_cir = np.linalg.norm(dxi_cir,ord=2)
         norm_dxi_ellip = np.linalg.norm(dxi_ellip,ord=2)
         norm_dxi_tri = np.linalg.norm(dxi_tri,ord=2)
@@ -253,104 +379,74 @@ while(1):
         # Append the norms to the lists for post-processing
         norm_dxi_cir_list.append(norm_dxi_cir)
         norm_dxi_ellip_list.append(norm_dxi_ellip)
-
-
-
+        norm_dxi_tri_list.append(norm_dxi_tri)
+        norm_dxi_square_list.append(norm_dxi_sqaure)
 
         # Finding s_t, which is the shape we are morphing to
         desired_target_shape = np.argmax([norm_dxi_cir,norm_dxi_ellip,norm_dxi_tri,norm_dxi_sqaure]) + 1 # s_t (shape to morph into) (1 is circle, 2 is ellipse, 3 is triagnle, 4 is square)
         # print("index:",desired_target_shape)
-
-        ############################################ TEST #################################################
-        # if norm_dxi_cir >= norm_dxi_ellip:
-        #     desired_target_shape = 1 # circle
-        # elif norm_dxi_cir < norm_dxi_ellip:
-        #     desired_target_shape = 2 # ellipse
-
         ###########################################################################################################################
-
-
-        ## Set target shape array
-        # target_array[:] = 0 # reset to 0
-        # print("target_array_zeros",target_array)
-        # target_array[desired_target_shape - 1] = 1 # target array, the shape we want to morph into
-        # print("target_array_actual",target_array)
-        # print("Delta_cur",Delta_cur)
-
-        ######################################################################################
         if prev_time is None:
             prev_time = time.time() # start timer
         now = time.time() # start counter
         dt = now - prev_time 
 
-        # For plotting CBF shapes, the a and b currently 
-        # if current_target_shape == 1:
-        #     b_cur = (1-Delta) *0.20 + Delta * 0.25   # Interpolate ellipse width to circle radius
-        # elif  current_target_shape == 2:
-        #     b_cur = (1-Delta) *0.25 + Delta * 0.20   # Interpolate ellipse width to circle radius  
-        # a_cur = 0.25  # Keep a constant, or you can interpolate if needed
-
-
         prev_time = time.time() # record time
         ##########################################################################################
         ## If target has changed, reset Delta and update lambda
 
-        # print("current_target_shape",current_target_shape)
-
-        ## Delta = (1-cos(2t))/2 for t \in [0,pi/2), and = 1 if t >= \pi
-
+        ## Delta = (1-cos(pi*t))/2 for t \in [0,1), and = 1 if t >= 1
         ## switch if shape has been reached, and set lambda to 1, if target no reached then don't switch
+        if 0 <= t < 1:
+            Delta = np.clip(Delta + np.pi/2*np.sin(np.pi*t)*dt, 0, 1)  # update Delta   
+        else:
+            Delta = 1
+        # calculate Delta dot 
+        if Delta < 1:
+            Delta_dot = np.pi/2*np.sin(np.pi*t) # compute delta dot
+            # t =+ dt # update time
+        else:
+            Delta_dot = 0 #transformation complete
+            Delta = 1
+        # print(Delta_dot)
+        t =+ dt # update tim
         if current_target_shape != desired_target_shape:
             if Delta == 1: # completed transformation to another shape and another target is selected        
                 for i in range(CBF_n):
                     if i == current_target_shape - 1:
                         lamb[i] = 1  # (1-Delta)*lamb[i] + Delta 
+                        base_shape = i+1 # keeps track of the base shape (lambda index + 1)
                     else: 
                         # not the target shape, set to 0
                         lamb[i] = 0   # (1-Delta)*lamb[i] 
                 current_target_shape = desired_target_shape # switch target shape
                 Delta = 0 # reset Delta
                 t = 0 # reset time
-            # else: # has not completed                      
-
-        if 0 <= t < 1:
-            Delta = np.clip(Delta + np.pi/2*np.sin(np.pi*t)*dt, 0, 1)  # update Delta   
-        else:
-            Delta = 1 
-
-        # calculate Delta dot 
-        if Delta < 1:
-            Delta_dot = np.pi/2*np.sin(np.pi*t) # compute delta dot
-            t =+ dt # update time
-        else:
-            Delta_dot = 0 #transformation complete
-            Delta = 1
-        # print(Delta_dot)
-        t =+ dt # update time
 
         # print("dt",dt)
-        print("Delta",Delta)
-        print("current target shape:",current_target_shape)
-        print("lambda",lamb)
+        # print("Delta",Delta)
+        # print("current target shape:",current_target_shape)
+        # print("lambda",lamb)
 
         ## for data saving 
         lamb_list.append(lamb.copy())
         Delta_list.append(Delta)
-        target_list.append(desired_target_shape)
-        ##########################################################################################
-        # si_barrier_cert_tv, idx_sel, (w1_sel, w2_sel) = pick_cert_for_Delta(Delta_cur, desired_target_shape)
+        target_list.append(current_target_shape)
+        ########################################Time varying CBF#####################################
         si_barrier_cert_tv = create_single_integrator_barrier_certificate_time_varying_with_obstacles(Delta=Delta,lamb=lamb,target_shape=current_target_shape,t=t
-                                                                                                      ,barrier_gain=10,safety_radius=radius,safety_a=a,safety_b=b)  
+                                                                                                      ,barrier_gain=1,safety_radius=radius,safety_a=a,safety_b=b)  
 
         dxi_tv = si_barrier_cert_tv(dxi, x_si, thetas)  
         dxu_tv = si_to_uni_dyn(dxi_tv, x)      
-        dxu = dxu_tv
-        # dxu = dxu_ellip 
+        dxu = dxu_tv # modified input
+        # dxu = dxu_ellip # for invariant-CBF experiments 
 
-        norm_dxi_tv = np.linalg.norm(dxi_tv,ord=2)
-        # if norm_dxi_cir >= 1:
-        #     norm_dxi_cir = 
+        ################################################################################
+
+        #################################################################################
+        
         # Append the norms to the lists for post-processing
+        norm_dxi_tv = np.linalg.norm(dxi_tv,ord=2)
         norm_dxi_tv_list.append(norm_dxi_tv)
         # print("u_norm:",norm_dxi_tv)
 
@@ -361,74 +457,17 @@ while(1):
         # Clear the list after removing markers
         g_objects = []  
 
-        ## Update Plotted Visualization
-        # g.set_offsets(x[:2,:].T+np.array([L*np.cos(x[2,:]),L*np.sin(x[2,:])]).T)
-
-        ## This updates the marker sizes if the figure window size is changed. 
-        # g.set_sizes([determine_marker_size(r,safety_radius)])
-
-        # g_objects.append(g)
-
         ############################# for plotting only #######################################   
-        for i in range(N):
-            # center the visualization where your ellipse was placed
-            cx = x[0, i] + L * np.cos(x[2, i])
-            cy = x[1, i] + L * np.sin(x[2, i])
+        update_hvis(H, x, thetas, L, base_shape, current_target_shape, Delta,
+                    plot_scale=0.45, densify=True, densify_factor=150.0)
 
-            # grid around the center
-            Rvis = 1.2 * max(radius, a, b, w/2.0)
-            xs = np.linspace(cx - Rvis, cx + Rvis, 181)
-            ys = np.linspace(cy - Rvis, cy + Rvis, 181)
-            XX, YY = np.meshgrid(xs, ys)
-
-            EX = cx - XX
-            EY = cy - YY
-
-            # rotate into agent i's frame (use -theta_i)
-            cth = np.cos(thetas[i]); sth = np.sin(thetas[i])
-            U =  cth*EX + sth*EY
-            V = sth*EX - cth*EY
-
-            # the four barriers on the grid (vectorized)
-            p = 3
-            h_circ_g  = (U / radius)**2 + (V / radius)**2 - 1.0
-            h_ellip_g = (U / a)**2 + (V / b)**2 - 1.0
-            h_sq_g    = (np.abs(U)**p + np.abs(V)**p)**(1.0/p) - w/2.0
-
-            # stable log-sum-exp "triangle"
-            L1 = 4*U + 4*np.sqrt(3)*V
-            L2 = -8*U
-            L3 = 4*U - 4*np.sqrt(3)*V
-            M  = np.maximum.reduce([L1, L2, L3])
-            h_tri_g = (3.0/5.0) * (M + np.log(np.exp(L1-M) + np.exp(L2-M) + np.exp(L3-M))) - 1.0
-
-            # same convex combo (h_1)
-            h_cur_g = lamb[0]*h_circ_g + lamb[1]*h_ellip_g + lamb[2]*h_tri_g + lamb[3]*h_sq_g
-
-            if current_target_shape == 1:
-                h_tv_g = (1 - Delta) * h_cur_g + Delta * h_circ_g
-            elif current_target_shape == 2:
-                h_tv_g = (1 - Delta) * h_cur_g + Delta * h_ellip_g
-            elif current_target_shape == 3:
-                h_tv_g = (1 - Delta) * h_cur_g + Delta * h_tri_g
-            elif current_target_shape == 4:
-                h_tv_g = (1 - Delta) * h_cur_g + Delta * h_sq_g
-            else:
-                h_tv_g = h_cur_g
-
-            # draw the 0-level set for agent i
-            scale = 0.45
-            Xscaled = cx + scale * (XX - cx)
-            Yscaled = cy + scale * (YY - cy)
-            cs = r.axes.contour(Xscaled, Yscaled, h_tv_g, levels=[0], colors=[CM[i]], linewidths=2, zorder=3)
-            g_objects.append(cs)  # so you can remove them next frame
-        ##########################################################################################################
+        #######################################################################################
         # Set the velocities by mapping the single-integrator inputs to unciycle inputs
         r.set_velocities(np.arange(N), dxu)
 
         # Stopping cirterion (if goal is reached)
         if(np.linalg.norm(goal_points[:2,:] - x_si) < 0.08):
-            break
+            break # navigation completed
 
         # Iterate the simulation
         r.step()
@@ -439,7 +478,8 @@ r.call_at_scripts_end()
 
 
 # Convert lists to a single 2D array
-u_norms_array = np.column_stack((norm_dxi_cir_list, norm_dxi_ellip_list, norm_dxi_tv_list))
+# u_norms_array = np.column_stack((norm_dxi_cir_list, norm_dxi_ellip_list, norm_dxi_tv_list))
+u_norms_array = np.column_stack((norm_dxi_cir_list, norm_dxi_ellip_list, norm_dxi_tri_list, norm_dxi_square_list, norm_dxi_tv_list))
 
 #Save Data
 print(time.time() - exp_start_time)
@@ -449,7 +489,7 @@ np.save("lamb_list", lamb_list)
 np.save("Delta_list", Delta_list)
 np.save("target_list", target_list)
 
-## plot block
+######################## plot block ############################################################
 
 ## Plotting the position trajectories
 # print("Preparing to plot trajectories...")

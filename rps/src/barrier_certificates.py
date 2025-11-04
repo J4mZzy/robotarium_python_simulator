@@ -283,17 +283,21 @@ def create_single_integrator_barrier_certificate_ellipse(barrier_gain=100, safet
             for j in range(i+1,N):
                 error = x[:, i] - x[:, j]
 
+                ex, ey = error[0], error[1]
+                c = np.cos(theta[i]); s = np.sin(theta[i])
                 ## Rotation 
-                error_1 = (error[0]*np.cos(theta[i])+error[1]*np.sin(theta[i])) 
-                error_2 = (error[0]*np.sin(theta[i])-error[1]*np.cos(theta[i])) 
-                h = (error_1/safety_a )**2 + (error_2/safety_b)**2 - 1    
+                u =  c*ex - s*ey
+                v =  s*ex + c*ey
+                h = (u/safety_a)**2 + (v/safety_b)**2 - 1.0
 
                 # h_ellip dot
                 # h_ellip_dot1 = 2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.cos(theta[i])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*np.sin(theta[i])/ safety_b**2
                 # h_ellip_dot2 = 2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.sin(theta[i])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*-np.cos(theta[i])/ safety_b**2
 
-                h_ellip_dot1 = 2 * error_1 * np.cos(theta[i]) / safety_a**2 + 2 * error_2 * np.sin(theta[i]) / safety_b**2
-                h_ellip_dot2 = 2 * error_1 * np.sin(theta[i]) / safety_a**2 + 2 * error_2 * -np.cos(theta[i]) / safety_b**2
+                inv_a2 = 1.0 / (safety_a**2)
+                inv_b2 = 1.0 / (safety_b**2)
+                h_ellip_dot1 = 2.0 * (u * c * inv_a2 + v * s * inv_b2)        # ∂/∂ex
+                h_ellip_dot2 = 2.0 * (-u * s * inv_a2 + v * c * inv_b2)       # ∂/∂ey
 
                 # if np.mod(i,2) == 0:
                 A[count, 2*i] = -h_ellip_dot1
@@ -368,21 +372,25 @@ def create_single_integrator_barrier_certificate_square(barrier_gain=100, safety
         for i in range(N-1):
             for j in range(i+1,N):
                 error = x[:, i] - x[:, j]
-                ## Rotation
-                error_1 = (error[0]*np.cos(theta[i])+error[1]*np.sin(theta[i])) 
-                error_2 = (error[0]*np.sin(theta[i])-error[1]*np.cos(theta[i])) 
+                ex, ey = error[0], error[1]
+                c = np.cos(theta[i]); s = np.sin(theta[i])
+
+                # --- rotate by +θ: [u;v] = [[c,-s],[s,c]] [ex;ey]
+                u =  c*ex - s*ey
+                v =  s*ex + c*ey
                 
                 ## p-norm h = ||R(theta)*x||_p - r
-                h = (np.power(np.power(np.abs(error_1),p) + np.power(np.abs(error_2),p),1/p)) - safety_width/2
-
-                h_square_dot1 = (np.sin(theta[i])*error_2*np.abs(error_2) + np.cos(theta[i])*error_1*np.abs(error_1))/np.power((error_2*error_2*np.abs(error_2) + error_1*error_1*np.abs(error_1)),2/3)
-                h_square_dot2 = (np.sin(theta[i])*error_1*np.abs(error_1) - np.cos(theta[i])*error_2*np.abs(error_2))/np.power((error_1*error_1*np.abs(error_1) + error_2*error_2*np.abs(error_2)),2/3)
-
-                ## p-norm h = ||R(theta)*x||_p - r
-                # h = (np.power(np.power(np.abs(error[0]),p) + np.power(np.abs(error[1]),p),1/p)) - safety_width/2
-
-                # h_square_dot1 = error[0] * np.power(np.abs(error[0]),p-2) / (np.power(np.power(np.abs(error[0]),p) + np.power(np.abs(error[1]),p),(p-1)/p))
-                # h_square_dot2 = error[1] * np.power(np.abs(error[1]),p-2) / (np.power(np.power(np.abs(error[0]),p) + np.power(np.abs(error[1]),p),(p-1)/p))
+                # h = (np.abs(error_1)**p + np.abs(error_2)**p)**(1.0/p) - safety_width/2.0
+                h = (np.abs(u)**3 + np.abs(v)**3)**(1.0/3.0) - safety_width/2.0
+                # h_square_dot1 = (np.sin(theta[i])*error_2*np.abs(error_2) + np.cos(theta[i])*error_1*np.abs(error_1))/(error_2**2*np.abs(error_2) + error_1**2*np.abs(error_1))**(2/3)
+                # h_square_dot2 = (np.sin(theta[i])*error_1*np.abs(error_1) - np.cos(theta[i])*error_2*np.abs(error_2))/(error_1**2*np.abs(error_1) + error_2**2*np.abs(error_2))**(2/3)
+                
+                # 3-norm “square”
+                den = (np.abs(u)**3 + np.abs(v)**3)**(2.0/3.0)
+                uu = u * np.abs(u)
+                vv = v * np.abs(v)
+                h_square_dot1 = (c*uu + s*vv) / den                            # ∂/∂ex
+                h_square_dot2 = (-s*uu + c*vv) / den                           # ∂/∂ey
 
 
                 A[count, 2*i] = -h_square_dot1
@@ -450,18 +458,41 @@ def create_single_integrator_barrier_certificate_triangle(barrier_gain=100, magn
             for j in range(i+1,N):
                 error = x[:, i] - x[:, j]
 
+                ex, ey = error[0], error[1]
+                c = np.cos(theta[i]); s = np.sin(theta[i])
+
+                # --- rotate by +θ: [u;v] = [[c,-s],[s,c]] [ex;ey]
+                u =  c*ex - s*ey
+                v =  s*ex + c*ey
+
+                # triangle (log-sum-exp), numerically stable
+                rt3 = np.sqrt(3.0)
+                L1 = 4*u + 4*rt3*v
+                L2 = -8*u
+                L3 = 4*u - 4*rt3*v
+                M  = np.maximum.reduce([L1, L2, L3])
+                w1 = np.exp(L1 - M); w2 = np.exp(L2 - M); w3 = np.exp(L3 - M)
+                S  = w1 + w2 + w3
+                h = (3.0/5.0) * (M + np.log(S)) - 1.0
+
+                # triangle: first ∂h/∂u, ∂h/∂v via softmax weights, then chain to (ex,ey)
+                a1 = w1 / S; a2 = w2 / S; a3 = w3 / S
+                h_u = (3.0/5.0) * (4*a1 - 8*a2 + 4*a3)
+                h_v = (3.0/5.0) * (4*rt3*(a1 - a3))
+                h_tri_dot1 = c*h_u + s*h_v                                      # ∂/∂ex
+                h_tri_dot2 = -s*h_u + c*h_v                                     # ∂/∂ey
                 ## Rotation
-                error_1 = (error[0]*np.cos(theta[i])+error[1]*np.sin(theta[i])) 
-                error_2 = (error[0]*np.sin(theta[i])-error[1]*np.cos(theta[i])) 
+                # error_1 = (error[0]*np.cos(theta[i])+error[1]*np.sin(theta[i])) 
+                # error_2 = (error[0]*np.sin(theta[i])-error[1]*np.cos(theta[i])) 
 
-                h = 3/5 * np.log(np.exp(4*error_1+4*np.sqrt(3)*error_2) + np.exp(-8*error_1) + np.exp(4*error_1-4*np.sqrt(3)*error_2))- 1
+                # h = 3/5 * np.log(np.exp(4*error_1+4*np.sqrt(3)*error_2) + np.exp(-8*error_1) + np.exp(4*error_1-4*np.sqrt(3)*error_2))- 1
 
-                h_tri_dot1 = 12*((np.sqrt(3)*np.sin(theta[i])+np.cos(theta[i]))*np.exp(8*np.sqrt(3)*error_2 + 12*error_1) 
-                              - 2*np.cos(theta[i])*np.exp(4*np.sqrt(3)*error_2)-(np.sqrt(3)*np.sin(theta[i])-np.cos(theta[i]))*np.exp(12*error_1))/ (5*(np.exp(8*np.sqrt(3)*error_2+12*error_1)
-                              + np.exp(4*np.sqrt(3)*error_2) + np.exp(12*error_1)))
-                h_tri_dot2 = 12*((np.sin(theta[i])-np.sqrt(3)*np.cos(theta[i]))*np.exp(8*np.sqrt(3)*error_2 + 12*error_1)
-                              - 2*np.sin(theta[i])*np.exp(4*np.sqrt(3)*error_2)+(np.sin(theta[i])+np.sqrt(3)*np.cos(theta[i]))*np.exp(12*error_1))/ (5*((np.exp(8*np.sqrt(3)*error_2)+1)*np.exp(12*error_1)
-                              + np.exp(4*np.sqrt(3)*error_2)))
+                # h_tri_dot1 = 12*((np.sqrt(3)*np.sin(theta[i])+np.cos(theta[i]))*np.exp(8*np.sqrt(3)*error_2 + 12*error_1) 
+                #               - 2*np.cos(theta[i])*np.exp(4*np.sqrt(3)*error_2)-(np.sqrt(3)*np.sin(theta[i])-np.cos(theta[i]))*np.exp(12*error_1))/ (5*(np.exp(8*np.sqrt(3)*error_2+12*error_1)
+                #               + np.exp(4*np.sqrt(3)*error_2) + np.exp(12*error_1)))
+                # h_tri_dot2 = 12*((np.sin(theta[i])-np.sqrt(3)*np.cos(theta[i]))*np.exp(8*np.sqrt(3)*error_2 + 12*error_1)
+                #               - 2*np.sin(theta[i])*np.exp(4*np.sqrt(3)*error_2)+(np.sin(theta[i])+np.sqrt(3)*np.cos(theta[i]))*np.exp(12*error_1))/ (5*((np.exp(8*np.sqrt(3)*error_2)+1)*np.exp(12*error_1)
+                #               + np.exp(4*np.sqrt(3)*error_2)))
                 
                 
                 # x_1 = error[0] 
@@ -536,16 +567,6 @@ def create_single_integrator_barrier_certificate_time_varying(Delta, lamb,target
         b = np.zeros(num_constraints)
         H = sparse(matrix(2 * np.identity(2*N)))
 
-        # Derivative of Delta
-        ## Constant function 
-        # if Delta < 1:
-        #     Delta_dot = 1/T # compute delta dot
-        # else:
-        #     Delta_dot = 0
-
-        ##  Delta = sin(t) 
-        
-        ## Delta = (1-cos(pi t))/2 for t \in [0,pi), and = 1 if t >= \pi
         if Delta < 1:
             Delta_dot = np.pi/2*np.sin(np.pi*t) # compute delta dot
         else:
@@ -562,57 +583,65 @@ def create_single_integrator_barrier_certificate_time_varying(Delta, lamb,target
         for i in range(N-1):
             for j in range(i+1,N):
                 error = x[:, i] - x[:, j]
+                ex, ey = error[0], error[1]
+                c = np.cos(theta[i]); s = np.sin(theta[i])
 
+                # --- rotate by +θ: [u;v] = [[c,-s],[s,c]] [ex;ey]
+                u =  c*ex - s*ey
+                v =  s*ex + c*ey
                 ###################################### library ########################################
-                # circular CBF
-                # h_circ = (error[0]*error[0] + error[1]*error[1]) - np.power(safety_radius, 2)
-                h_circ = (error[0]/safety_radius)**2 + (error[1]/safety_radius)**2 - 1 
+                # circle
+                h_circ  = (ex/safety_radius)**2 + (ey/safety_radius)**2 - 1.0
 
-                # elliptical
-                error_1 = (error[0]*np.cos(theta[i])+error[1]*np.sin(theta[i])) 
-                error_2 = (error[0]*np.sin(theta[i])-error[1]*np.cos(theta[i])) 
-                h_ellip = (error_1/safety_a)**2 + (error_2/safety_b)**2 - 1    
+                # ellipse
+                h_ellip = (u/safety_a)**2 + (v/safety_b)**2 - 1.0
 
-                ## smooth square
-                p = 3
-                safety_width = 0.4
-                h_square = (np.power(np.power(np.abs(error_1),p) + np.power(np.abs(error_2),p),1/p)) - safety_width/2
+                # 3-norm “square”
+                safety_width = 0.4  # if not set elsewhere
+                h_square = (np.abs(u)**3 + np.abs(v)**3)**(1.0/3.0) - safety_width/2.0
 
-                # smooth triangle
-                h_tri = 3/5 * np.log(np.exp(4*error_1+4*np.sqrt(3)*error_2) + np.exp(-8*error_1) + np.exp(4*error_1-4*np.sqrt(3)*error_2))- 1
+                # triangle (log-sum-exp), numerically stable
+                rt3 = np.sqrt(3.0)
+                L1 = 4*u + 4*rt3*v
+                L2 = -8*u
+                L3 = 4*u - 4*rt3*v
+                M  = np.maximum.reduce([L1, L2, L3])
+                w1 = np.exp(L1 - M); w2 = np.exp(L2 - M); w3 = np.exp(L3 - M)
+                S  = w1 + w2 + w3
+                h_tri = (3.0/5.0) * (M + np.log(S)) - 1.0
 
-                ########################################################################################
-                # calculate the previous h (convex combination)
-                h_cur = lamb[0] * h_circ +  lamb[1] * h_ellip + lamb[2] * h_tri + lamb[3] * h_square  # circle and ellipse for experiment 1 n 2
-                ### Change below for running experiment 3
-                # h_cur = lamb[0] * h_circ +  lamb[3] * h_square  # circle and ellipse for experiment 3
+                # convex combo
+                h_cur = lamb[0]*h_circ + lamb[1]*h_ellip + lamb[2]*h_tri + lamb[3]*h_square
 
-                
-                # h_circ dot
-                # h_circ_dot1 = 2 * error[0]
-                # h_circ_dot2 = 2 * error[1]
-                h_circ_dot1 = 2*error[0]/safety_radius**2
-                h_circ_dot2 = 2*error[1]/safety_radius**2
+                # ---------------- gradients wrt (ex, ey) ----------------
+                # circle
+                h_circ_dot1 = 2.0 * ex / (safety_radius**2)
+                h_circ_dot2 = 2.0 * ey / (safety_radius**2)
 
-                # h_ellip dot
-                h_ellip_dot1 = 2 * error_1 * np.cos(theta[i]) / safety_a**2 + 2 * error_2 * np.sin(theta[i]) / safety_b**2
-                h_ellip_dot2 = 2 * error_1 * np.sin(theta[i]) / safety_a**2 + 2 * error_2 * -np.cos(theta[i]) / safety_b**2
-                
-                # h_tri dot
-                h_tri_dot1 = 12*((np.sqrt(3)*np.sin(theta[i])+np.cos(theta[i]))*np.exp(8*np.sqrt(3)*error_2 + 12*error_1) 
-                              - 2*np.cos(theta[i])*np.exp(4*np.sqrt(3)*error_2)-(np.sqrt(3)*np.sin(theta[i])-np.cos(theta[i]))*np.exp(12*error_1))/ (5*(np.exp(8*np.sqrt(3)*error_2+12*error_1)
-                              + np.exp(4*np.sqrt(3)*error_2) + np.exp(12*error_1)))
-                h_tri_dot2 = 12*((np.sin(theta[i])-np.sqrt(3)*np.cos(theta[i]))*np.exp(8*np.sqrt(3)*error_2 + 12*error_1)
-                              - 2*np.sin(theta[i])*np.exp(4*np.sqrt(3)*error_2)+(np.sin(theta[i])+np.sqrt(3)*np.cos(theta[i]))*np.exp(12*error_1))/ (5*((np.exp(8*np.sqrt(3)*error_2)+1)*np.exp(12*error_1)
-                              + np.exp(4*np.sqrt(3)*error_2)))
-                
-                # h_square dot
-                h_square_dot1 = (np.sin(theta[i])*error_2*np.abs(error_2) + np.cos(theta[i])*error_1*np.abs(error_1))/np.power((error_2*error_2*np.abs(error_2) + error_1*error_1*np.abs(error_1)),2/3)
-                h_square_dot2 = (np.sin(theta[i])*error_1*np.abs(error_1) - np.cos(theta[i])*error_2*np.abs(error_2))/np.power((error_1*error_1*np.abs(error_1) + error_2*error_2*np.abs(error_2)),2/3)
-                
-                # Current h_dot
-                h_cur_dot1 = lamb[0] * h_circ_dot1 +  lamb[1] * h_ellip_dot1 + lamb[2] * h_tri_dot1 +  lamb[3] * h_square_dot1
-                h_cur_dot2 = lamb[0] * h_circ_dot2 +  lamb[1] * h_ellip_dot2 + lamb[2] * h_tri_dot2 +  lamb[3] * h_square_dot2
+                # ellipse  (du/dex=c, du/dey=-s, dv/dex=s, dv/dey=c)
+                inv_a2 = 1.0 / (safety_a**2)
+                inv_b2 = 1.0 / (safety_b**2)
+                h_ellip_dot1 = 2.0 * (u * c * inv_a2 + v * s * inv_b2)        # ∂/∂ex
+                h_ellip_dot2 = 2.0 * (-u * s * inv_a2 + v * c * inv_b2)       # ∂/∂ey
+
+                # 3-norm “square”
+                eps = 1e-12
+                den = (np.abs(u)**3 + np.abs(v)**3 + eps)**(2.0/3.0)
+                uu = u * np.abs(u)
+                vv = v * np.abs(v)
+                h_square_dot1 = (c*uu + s*vv) / den                            # ∂/∂ex
+                h_square_dot2 = (-s*uu + c*vv) / den                           # ∂/∂ey
+
+                # triangle: first ∂h/∂u, ∂h/∂v via softmax weights, then chain to (ex,ey)
+                a1 = w1 / S; a2 = w2 / S; a3 = w3 / S
+                h_u = (3.0/5.0) * (4*a1 - 8*a2 + 4*a3)
+                h_v = (3.0/5.0) * (4*rt3*(a1 - a3))
+                h_tri_dot1 = c*h_u + s*h_v                                      # ∂/∂ex
+                h_tri_dot2 = -s*h_u + c*h_v                                     # ∂/∂ey
+
+                # blended gradient (for your current h_cur)
+                h_cur_dot1 = lamb[0]*h_circ_dot1 + lamb[1]*h_ellip_dot1 + lamb[2]*h_tri_dot1 + lamb[3]*h_square_dot1
+                h_cur_dot2 = lamb[0]*h_circ_dot2 + lamb[1]*h_ellip_dot2 + lamb[2]*h_tri_dot2 + lamb[3]*h_square_dot2
 
                 # if 1 switching current to circle, if 2 switching current to ellipse
                 if target_shape == 1:
@@ -867,9 +896,9 @@ def create_single_integrator_barrier_certificate_with_obstacles(barrier_gain=100
         assert dxi.shape[0] == 2, "In the function created by the create_single_integrator_barrier_certificate function, the dimension of the robot single integrator velocity command (dxi) must be 2 ([x_dot;y_dot]). Recieved dimension %r." % dxi.shape[0]
         assert x.shape[1] == dxi.shape[1], "In the function created by the create_single_integrator_barrier_certificate function, the number of robot states (x) must be equal to the number of robot single integrator velocity commands (dxi). Recieved a current robot pose input array (x) of size %r x %r and single integrator velocity array (dxi) of size %r x %r." % (x.shape[0], x.shape[1], dxi.shape[0], dxi.shape[1])
 
-        obstacle_centers = np.array([[-0.8,  0.8],
-                                     [-0.2,  -0.2]], dtype=float)  # shape (2, 2)
-        obstacle_radius = 0.2 # fixed radius
+        obstacle_centers = np.array([[-0.6,  0.6],
+                                 [0,  0]], dtype=float)  # shape (2, 2)
+        obstacle_radius = 0.25 # fixed radius
         K = 2 # number of obstacles
 
         # Initialize some variables for computational savings
@@ -884,10 +913,10 @@ def create_single_integrator_barrier_certificate_with_obstacles(barrier_gain=100
         for i in range(N-1):
             for j in range(i+1,N):
                 error = x[:, i] - x[:, j]
-                h = (error[0]*error[0] + error[1]*error[1]) - np.power(safety_radius, 2)
+                h = (error[0]/safety_radius)**2 + (error[1]/safety_radius)**2 - 1 
 
-                A[count, (2*i, (2*i+1))] = -2 * error
-                A[count, (2*j, (2*j+1))] = 2 * error
+                A[count, (2*i, (2*i+1))] = -2 * error/safety_radius**2
+                A[count, (2*j, (2*j+1))] = 2 * error/safety_radius**2
                 b[count] = barrier_gain*np.power(h, 3) #    cubic
                 # b[count] = barrier_gain*h
                 count += 1
@@ -951,9 +980,9 @@ def create_single_integrator_barrier_certificate_ellipse_with_obstacles(barrier_
         assert dxi.shape[0] == 2, "The dimension of the robot single integrator velocity command must be 2 ([x_dot;y_dot]). Received dimension %r." % dxi.shape[0]
         assert x.shape[1] == dxi.shape[1], "The number of robot states must be equal to the number of robot single integrator velocity commands. Received x: %r x %r, dxi: %r x %r." % (x.shape[0], x.shape[1], dxi.shape[0], dxi.shape[1])
 
-        obstacle_centers = np.array([[-0.8,  0.8],
-                                     [-0.2,  -0.2]], dtype=float)  # shape (2, 2)
-        obstacle_radius = 0.2 # fixed radius
+        obstacle_centers = np.array([[-0.6,  0.6],
+                                 [0,  0]], dtype=float)  # shape (2, 2)
+        obstacle_radius = 0.25 # fixed radius
         K = 2 # number of obstacles
 
         # Initialize variables for computational savings
@@ -971,13 +1000,21 @@ def create_single_integrator_barrier_certificate_ellipse_with_obstacles(barrier_
             for j in range(i+1,N):
                 error = x[:, i] - x[:, j]
 
+                ex, ey = error[0], error[1]
+                c = np.cos(theta[i]); s = np.sin(theta[i])
                 ## Rotation 
-                error_1 = (error[0]*np.cos(theta[i])+error[1]*np.sin(theta[i])) 
-                error_2 = (error[0]*np.sin(theta[i])-error[1]*np.cos(theta[i])) 
-                h = (error_1/safety_a )**2 + (error_2/safety_b)**2 - 1    
+                u =  c*ex - s*ey
+                v =  s*ex + c*ey
+                h = (u/safety_a)**2 + (v/safety_b)**2 - 1.0
 
-                h_ellip_dot1 = 2 * error_1 * np.cos(theta[i]) / safety_a**2 + 2 * error_2 * np.sin(theta[i]) / safety_b**2
-                h_ellip_dot2 = 2 * error_1 * np.sin(theta[i]) / safety_a**2 + 2 * error_2 * -np.cos(theta[i]) / safety_b**2
+                # h_ellip dot
+                # h_ellip_dot1 = 2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.cos(theta[i])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*np.sin(theta[i])/ safety_b**2
+                # h_ellip_dot2 = 2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.sin(theta[i])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*-np.cos(theta[i])/ safety_b**2
+
+                inv_a2 = 1.0 / (safety_a**2)
+                inv_b2 = 1.0 / (safety_b**2)
+                h_ellip_dot1 = 2.0 * (u * c * inv_a2 + v * s * inv_b2)        # ∂/∂ex
+                h_ellip_dot2 = 2.0 * (-u * s * inv_a2 + v * c * inv_b2)       # ∂/∂ey
 
                 # if np.mod(i,2) == 0:
                 A[count, 2*i] = -h_ellip_dot1
@@ -1042,9 +1079,9 @@ def create_single_integrator_barrier_certificate_triangle_with_obstacles(barrier
         assert dxi.shape[0] == 2, "The dimension of the robot single integrator velocity command must be 2 ([x_dot;y_dot]). Received dimension %r." % dxi.shape[0]
         assert x.shape[1] == dxi.shape[1], "The number of robot states must be equal to the number of robot single integrator velocity commands. Received x: %r x %r, dxi: %r x %r." % (x.shape[0], x.shape[1], dxi.shape[0], dxi.shape[1])
 
-        obstacle_centers = np.array([[-0.8,  0.8],
-                                     [-0.2,  -0.2]], dtype=float)  # shape (2, 2)
-        obstacle_radius = 0.2 # fixed radius
+        obstacle_centers = np.array([[-0.6,  0.6],
+                                 [0,  0]], dtype=float)  # shape (2, 2)
+        obstacle_radius = 0.25 # fixed radius
         K = 2 # number of obstacles
 
         # Initialize variables for computational savings
@@ -1130,9 +1167,9 @@ def create_single_integrator_barrier_certificate_square_with_obstacles(barrier_g
     assert magnitude_limit > 0, "In the function create_single_integrator_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be positive. Recieved %r." % magnitude_limit
     assert magnitude_limit <= 0.2, "In the function create_single_integrator_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be less than the max speed of the robot (0.2m/s). Recieved %r." % magnitude_limit
 
-    obstacle_centers = np.array([[-0.8,  0.8],
-                                 [-0.2,  -0.2]], dtype=float)  # shape (2, 2)
-    obstacle_radius = 0.2 # fixed radius
+    obstacle_centers = np.array([[-0.6,  0.6],
+                                 [0,  0]], dtype=float)  # shape (2, 2)
+    obstacle_radius = 0.25 # fixed radius
     K = 2 # number of obstacles
 
     def f(dxi, x, theta):
@@ -1164,10 +1201,10 @@ def create_single_integrator_barrier_certificate_square_with_obstacles(barrier_g
                 error_2 = (error[0]*np.sin(theta[i])-error[1]*np.cos(theta[i])) 
                 
                 ## p-norm h = ||R(theta)*x||_p - r
-                h = (np.power(np.power(np.abs(error_1),p) + np.power(np.abs(error_2),p),1/p)) - safety_width/2
+                h = (np.abs(error_1)**p + np.abs(error_2)**p)**(1.0/p) - safety_width/2.0
 
-                h_square_dot1 = (np.sin(theta[i])*error_2*np.abs(error_2) + np.cos(theta[i])*error_1*np.abs(error_1))/np.power((error_2*error_2*np.abs(error_2) + error_1*error_1*np.abs(error_1)),2/3)
-                h_square_dot2 = (np.sin(theta[i])*error_1*np.abs(error_1) - np.cos(theta[i])*error_2*np.abs(error_2))/np.power((error_1*error_1*np.abs(error_1) + error_2*error_2*np.abs(error_2)),2/3)
+                h_square_dot1 = (np.sin(theta[i])*error_2*np.abs(error_2) + np.cos(theta[i])*error_1*np.abs(error_1))/(error_2**2*np.abs(error_2) + error_1**2*np.abs(error_1))**(2/3)
+                h_square_dot2 = (np.sin(theta[i])*error_1*np.abs(error_1) - np.cos(theta[i])*error_2*np.abs(error_2))/(error_1**2*np.abs(error_1) + error_2**2*np.abs(error_2))**(2/3)
 
                 ## p-norm h = ||R(theta)*x||_p - r
                 # h = (np.power(np.power(np.abs(error[0]),p) + np.power(np.abs(error[1]),p),1/p)) - safety_width/2
@@ -1240,9 +1277,9 @@ def create_single_integrator_barrier_certificate_time_varying_with_obstacles(Del
         assert dxi.shape[0] == 2, "The dimension of the robot single integrator velocity command must be 2 ([x_dot;y_dot]). Received dimension %r." % dxi.shape[0]
         assert x.shape[1] == dxi.shape[1], "The number of robot states must be equal to the number of robot single integrator velocity commands. Received x: %r x %r, dxi: %r x %r." % (x.shape[0], x.shape[1], dxi.shape[0], dxi.shape[1])
 
-        obstacle_centers = np.array([[-0.8,  0.8],
-                                     [-0.2,  -0.2]], dtype=float)  # shape (2, 2)
-        obstacle_radius = 0.2 # fixed radius
+        obstacle_centers = np.array([[-0.6,  0.6],
+                                 [0,  0]], dtype=float)  # shape (2, 2)
+        obstacle_radius = 0.25 # fixed radius
         K = 2 # number of obstacles
 
         # Initialize variables for computational savings
@@ -1263,7 +1300,7 @@ def create_single_integrator_barrier_certificate_time_varying_with_obstacles(Del
 
         ## Delta = (1-cos(pi t))/2 for t \in [0,pi), and = 1 if t >= \pi
         if Delta < 1:
-            Delta_dot = np.sin(2*t) # compute delta dot
+            Delta_dot = np.pi/2*np.sin(np.pi*t) # compute delta dot
         else: # Delta >=1 , Delta_dot is 0 
             Delta_dot = 0
         
@@ -1274,51 +1311,112 @@ def create_single_integrator_barrier_certificate_time_varying_with_obstacles(Del
             for j in range(i+1,N):
                 error = x[:, i] - x[:, j]
                 ###################################### library ########################################
-                # circular CBF
-                h_circ = (error[0]*error[0] + error[1]*error[1]) - np.power(safety_radius, 2)
+                # # circular CBF
+                # h_circ = (error[0]/safety_radius)**2 + (error[1]/safety_radius)**2 - 1
 
-                # elliptical
-                error_1 = (error[0]*np.cos(theta[i])+error[1]*np.sin(theta[i])) 
-                error_2 = (error[0]*np.sin(theta[i])-error[1]*np.cos(theta[i])) 
-                h_ellip = (error_1/safety_a )**2 + (error_2/safety_b)**2 - 1    
+                # # elliptical
+                # error_1 = (error[0]*np.cos(theta[i])+error[1]*np.sin(theta[i])) 
+                # error_2 = (error[0]*np.sin(theta[i])-error[1]*np.cos(theta[i])) 
+                # h_ellip = (error_1/safety_a )**2 + (error_2/safety_b)**2 - 1    
 
-                ## smooth square
-                p = 3
-                safety_width = 0.4
-                h_square = (np.power(np.power(np.abs(error_1),p) + np.power(np.abs(error_2),p),1/p)) - safety_width/2
+                # ## smooth square (3- norm used)
+                # safety_width = 0.4
+                # h_square = (np.abs(error_1)**3 + np.abs(error_2)**3)**(1.0/3) - safety_width/2.0
 
-                # smooth triangle
-                h_tri = 3/5 * np.log(np.exp(4*error_1+4*np.sqrt(3)*error_2) + np.exp(-8*error_1) + np.exp(4*error_1-4*np.sqrt(3)*error_2))- 1
+                # # smooth triangle
+                # h_tri = 3/5 * np.log(np.exp(4*error_1+4*np.sqrt(3)*error_2) + np.exp(-8*error_1) + np.exp(4*error_1-4*np.sqrt(3)*error_2))- 1
 
-                ########################################################################################
-                # calculate the previous h (convex combination)
-                h_cur = lamb[0] * h_circ +  lamb[1] * h_ellip + lamb[2] * h_tri + lamb[3] * h_square  # circle and ellipse for experiment 1 n 2
+                # ########################################################################################
+                # # calculate the previous h (convex combination)
+                # h_cur = lamb[0] * h_circ +  lamb[1] * h_ellip + lamb[2] * h_tri + lamb[3] * h_square  # circle and ellipse for experiment 1 n 2
 
                 
-                # h_circ dot
-                h_circ_dot1 = 2 * error[0]
-                h_circ_dot2 = 2 * error[1]
+                # # h_circ dot
+                # h_circ_dot1 = 2 * error[0]/safety_radius**2
+                # h_circ_dot2 = 2 * error[1]/safety_radius**2
 
-                # h_ellip dot
-                h_ellip_dot1 = 2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.cos(theta[i])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*np.sin(theta[i])/ safety_b**2
-                h_ellip_dot2 = 2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.sin(theta[i])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*-np.cos(theta[i])/ safety_b**2
+                # # h_ellip dot
+                # h_ellip_dot1 = 2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.cos(theta[i])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*np.sin(theta[i])/ safety_b**2
+                # h_ellip_dot2 = 2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.sin(theta[i])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*-np.cos(theta[i])/ safety_b**2
                 
-                # h_tri dot
-                h_tri_dot1 = 12*((np.sqrt(3)*np.sin(theta[i])+np.cos(theta[i]))*np.exp(8*np.sqrt(3)*error_2 + 12*error_1) 
-                              - 2*np.cos(theta[i])*np.exp(4*np.sqrt(3)*error_2)-(np.sqrt(3)*np.sin(theta[i])-np.cos(theta[i]))*np.exp(12*error_1))/ (5*(np.exp(8*np.sqrt(3)*error_2+12*error_1)
-                              + np.exp(4*np.sqrt(3)*error_2) + np.exp(12*error_1)))
-                h_tri_dot2 = 12*((np.sin(theta[i])-np.sqrt(3)*np.cos(theta[i]))*np.exp(8*np.sqrt(3)*error_2 + 12*error_1)
-                              - 2*np.sin(theta[i])*np.exp(4*np.sqrt(3)*error_2)+(np.sin(theta[i])+np.sqrt(3)*np.cos(theta[i]))*np.exp(12*error_1))/ (5*((np.exp(8*np.sqrt(3)*error_2)+1)*np.exp(12*error_1)
-                              + np.exp(4*np.sqrt(3)*error_2)))
+                # # h_tri dot
+                # h_tri_dot1 = 12*((np.sqrt(3)*np.sin(theta[i])+np.cos(theta[i]))*np.exp(8*np.sqrt(3)*error_2 + 12*error_1) 
+                #               - 2*np.cos(theta[i])*np.exp(4*np.sqrt(3)*error_2)-(np.sqrt(3)*np.sin(theta[i])-np.cos(theta[i]))*np.exp(12*error_1))/ (5*(np.exp(8*np.sqrt(3)*error_2+12*error_1)
+                #               + np.exp(4*np.sqrt(3)*error_2) + np.exp(12*error_1)))
+                # h_tri_dot2 = 12*((np.sin(theta[i])-np.sqrt(3)*np.cos(theta[i]))*np.exp(8*np.sqrt(3)*error_2 + 12*error_1)
+                #               - 2*np.sin(theta[i])*np.exp(4*np.sqrt(3)*error_2)+(np.sin(theta[i])+np.sqrt(3)*np.cos(theta[i]))*np.exp(12*error_1))/ (5*((np.exp(8*np.sqrt(3)*error_2)+1)*np.exp(12*error_1)
+                #               + np.exp(4*np.sqrt(3)*error_2)))
                 
-                # h_square dot
-                h_square_dot1 = (np.sin(theta[i])*error_2*np.abs(error_2) + np.cos(theta[i])*error_1*np.abs(error_1))/np.power((error_2*error_2*np.abs(error_2) + error_1*error_1*np.abs(error_1)),2/3)
-                h_square_dot2 = (np.sin(theta[i])*error_1*np.abs(error_1) - np.cos(theta[i])*error_2*np.abs(error_2))/np.power((error_1*error_1*np.abs(error_1) + error_2*error_2*np.abs(error_2)),2/3)
+                # # h_square dot
+                # h_square_dot1 = (np.sin(theta[i])*error_2*np.abs(error_2) + np.cos(theta[i])*error_1*np.abs(error_1))/((np.abs(error_2)**3 + np.abs(error_1)**3 )**(2/3))
+                # h_square_dot2 = (np.sin(theta[i])*error_1*np.abs(error_1) - np.cos(theta[i])*error_2*np.abs(error_2))/((np.abs(error_1)**3 + np.abs(error_2)**3 )**(2/3))
                 
-                # Current h_dot (circ,ellip,tri,square)
-                h_cur_dot1 = lamb[0] * h_circ_dot1 +  lamb[1] * h_ellip_dot1 + lamb[2] * h_tri_dot1 +  lamb[3] * h_square_dot1
-                h_cur_dot2 = lamb[0] * h_circ_dot2 +  lamb[1] * h_ellip_dot2 + lamb[2] * h_tri_dot2 +  lamb[3] * h_square_dot2
+                # # Current h_dot (circ,ellip,tri,square)
+                # h_cur_dot1 = lamb[0] * h_circ_dot1 +  lamb[1] * h_ellip_dot1 + lamb[2] * h_tri_dot1 +  lamb[3] * h_square_dot1
+                # h_cur_dot2 = lamb[0] * h_circ_dot2 +  lamb[1] * h_ellip_dot2 + lamb[2] * h_tri_dot2 +  lamb[3] * h_square_dot2
                 
+                ex, ey = error[0], error[1]
+                c = np.cos(theta[i]); s = np.sin(theta[i])
+
+                # --- rotate by +θ: [u;v] = [[c,-s],[s,c]] [ex;ey]
+                u =  c*ex - s*ey
+                v =  s*ex + c*ey
+
+                # ---------------- h values ----------------
+                # circle
+                h_circ  = (u/safety_radius)**2 + (v/safety_radius)**2 - 1.0
+
+                # ellipse
+                h_ellip = (u/safety_a)**2 + (v/safety_b)**2 - 1.0
+
+                # 3-norm “square”
+                safety_width = 0.4  # if not set elsewhere
+                h_square = (np.abs(u)**3 + np.abs(v)**3)**(1.0/3.0) - safety_width/2.0
+
+                # triangle (log-sum-exp), numerically stable
+                rt3 = np.sqrt(3.0)
+                L1 = 4*u + 4*rt3*v
+                L2 = -8*u
+                L3 = 4*u - 4*rt3*v
+                M  = np.maximum.reduce([L1, L2, L3])
+                w1 = np.exp(L1 - M); w2 = np.exp(L2 - M); w3 = np.exp(L3 - M)
+                S  = w1 + w2 + w3
+                h_tri = (3.0/5.0) * (M + np.log(S)) - 1.0
+
+                # convex combo
+                h_cur = lamb[0]*h_circ + lamb[1]*h_ellip + lamb[2]*h_tri + lamb[3]*h_square
+
+                # ---------------- gradients wrt (ex, ey) ----------------
+                # circle
+                h_circ_dot1 = 2.0 * ex / (safety_radius**2)
+                h_circ_dot2 = 2.0 * ey / (safety_radius**2)
+
+                # ellipse  (du/dex=c, du/dey=-s, dv/dex=s, dv/dey=c)
+                inv_a2 = 1.0 / (safety_a**2)
+                inv_b2 = 1.0 / (safety_b**2)
+                h_ellip_dot1 = 2.0 * (u * c * inv_a2 + v * s * inv_b2)        # ∂/∂ex
+                h_ellip_dot2 = 2.0 * (-u * s * inv_a2 + v * c * inv_b2)       # ∂/∂ey
+
+                # 3-norm “square”
+                eps = 1e-12
+                den = (np.abs(u)**3 + np.abs(v)**3 + eps)**(2.0/3.0)
+                uu = u * np.abs(u)
+                vv = v * np.abs(v)
+                h_square_dot1 = (c*uu + s*vv) / den                            # ∂/∂ex
+                h_square_dot2 = (-s*uu + c*vv) / den                           # ∂/∂ey
+
+                # triangle: first ∂h/∂u, ∂h/∂v via softmax weights, then chain to (ex,ey)
+                a1 = w1 / S; a2 = w2 / S; a3 = w3 / S
+                h_u = (3.0/5.0) * (4*a1 - 8*a2 + 4*a3)
+                h_v = (3.0/5.0) * (4*rt3*(a1 - a3))
+                h_tri_dot1 = c*h_u + s*h_v                                      # ∂/∂ex
+                h_tri_dot2 = -s*h_u + c*h_v                                     # ∂/∂ey
+
+                # blended gradient (for your current h_cur)
+                h_cur_dot1 = lamb[0]*h_circ_dot1 + lamb[1]*h_ellip_dot1 + lamb[2]*h_tri_dot1 + lamb[3]*h_square_dot1
+                h_cur_dot2 = lamb[0]*h_circ_dot2 + lamb[1]*h_ellip_dot2 + lamb[2]*h_tri_dot2 + lamb[3]*h_square_dot2
+                #########################################################################################
+               
                 # if 1 switching current to circle, if 2 switching current to ellipse
                 if target_shape == 1:
                     h_tv = (1-Delta) * h_cur + Delta * h_circ 
