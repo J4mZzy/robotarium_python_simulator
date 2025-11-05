@@ -259,10 +259,10 @@ H = init_hvis(r.axes, N, CM, radius=radius, a=a, b=b, w=w, grid_res=201, line_w=
 # to collide.  Thus, we're going to use barrier certificates (in a centrialized way)
 CBF_n = 4 # how many CBFs we are using 
 
-si_barrier_cert_cir = create_single_integrator_barrier_certificate_with_obstacles(barrier_gain=0.1,safety_radius=radius)
-si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse_with_obstacles(barrier_gain=0.1,safety_a=a,safety_b=b)
-si_barrier_cert_tri = create_single_integrator_barrier_certificate_triangle_with_obstacles(barrier_gain=0.1)
-si_barrier_cert_sqaure = create_single_integrator_barrier_certificate_square_with_obstacles(barrier_gain=0.1,safety_width=w,norm=3)
+si_barrier_cert_cir = create_single_integrator_barrier_certificate_with_obstacles(barrier_gain=10,safety_radius=radius)
+si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse_with_obstacles(barrier_gain=10,safety_a=a,safety_b=b)
+# si_barrier_cert_tri = create_single_integrator_barrier_certificate_triangle_with_obstacles(barrier_gain=0.1)
+# si_barrier_cert_sqaure = create_single_integrator_barrier_certificate_square_with_obstacles(barrier_gain=0.1,safety_width=w,norm=3)
 
 ######## Remember to change this to 1 when running ellipse ######################
 current_target_shape = 1 # initialize the shape flag as 1 

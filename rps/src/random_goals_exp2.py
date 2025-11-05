@@ -259,10 +259,10 @@ H = init_hvis(r.axes, N, CM, radius=radius, a=a, b=b, w=w, grid_res=201, line_w=
 # to collide.  Thus, we're going to use barrier certificates (in a centrialized way)
 CBF_n = 4 # how many CBFs we are using 
 
-si_barrier_cert_cir = create_single_integrator_barrier_certificate_with_obstacles(barrier_gain=0.1,safety_radius=radius)
-si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse_with_obstacles(barrier_gain=0.1,safety_a=a,safety_b=b)
-si_barrier_cert_tri = create_single_integrator_barrier_certificate_triangle_with_obstacles(barrier_gain=0.1)
-si_barrier_cert_sqaure = create_single_integrator_barrier_certificate_square_with_obstacles(barrier_gain=0.1,safety_width=w,norm=3)
+si_barrier_cert_cir = create_single_integrator_barrier_certificate_with_obstacles(barrier_gain=100,safety_radius=radius)
+si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse_with_obstacles(barrier_gain=100,safety_a=a,safety_b=b)
+si_barrier_cert_tri = create_single_integrator_barrier_certificate_triangle_with_obstacles(barrier_gain=100)
+si_barrier_cert_sqaure = create_single_integrator_barrier_certificate_square_with_obstacles(barrier_gain=100,safety_width=w,norm=3)
 
 ######## Remember to change this to 1 when running ellipse ######################
 current_target_shape = 1 # initialize the shape flag as 1 
@@ -446,11 +446,11 @@ while(1):
         target_list.append(current_target_shape)
         ########################################Time varying CBF#####################################
         si_barrier_cert_tv = create_single_integrator_barrier_certificate_time_varying_with_obstacles(Delta=Delta,lamb=lamb,target_shape=current_target_shape,Delta_dot=Delta_dot
-                                                                                                      ,barrier_gain=10,safety_radius=radius,safety_a=a,safety_b=b)  
+                                                                                                      ,barrier_gain=100,safety_radius=radius,safety_a=a,safety_b=b)  
 
         dxi_tv = si_barrier_cert_tv(dxi, x_si, thetas)  
         dxu_tv = si_to_uni_dyn(dxi_tv, x)      
-        dxu = dxu_tv # modified input
+        dxu = dxu_square # modified input
         # dxu = dxu_ellip # for invariant-CBF experiments 
 
         ################################################################################
