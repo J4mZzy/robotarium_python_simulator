@@ -21,7 +21,7 @@ iterations = 1000
 ## The arena is bounded between x \in (-1.6,1.6)  y\in (-1,1) 
 
 # Number of robots
-N = 20 # 2,4,8,11,16,20
+N = 16 # 2,4,8,11,16,20
 
 # radius of the circle robots are forming
 circle_radius = 0.9
@@ -212,7 +212,7 @@ H = init_hvis(r.axes, N, CM, radius=radius, a=a, b=b, w=w, grid_res=201, line_w=
 # to collide.  Thus, we're going to use barrier certificates (in a centrialized way)
 CBF_n = 4 # how many CBFs we are using 
 
-si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=1,safety_radius=radius)
+si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=0.1,safety_radius=radius)
 si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=0.1,safety_a=a,safety_b=b)
 # si_barrier_cert_tri = create_single_integrator_barrier_certificate_triangle_with_obstacles(barrier_gain=1)
 # si_barrier_cert_sqaure = create_single_integrator_barrier_certificate_square_with_obstacles(barrier_gain=1,safety_width=w,norm=3)
@@ -301,13 +301,13 @@ while(1):
         ########################### barrier type ######################################
         # Use the barrier certificates to make sure that the agents don't collide
         # Generating safe inputs
-        dxi_cir = si_barrier_cert_cir(dxi, x_si)                # the first barrier being circular
-        dxi_ellip = si_barrier_cert_ellip(dxi, x_si,thetas)     # the second barrier being elliptical
+        dxi_cir, h_min_cir = si_barrier_cert_cir(dxi, x_si)                # the first barrier being circular
+        dxi_ellip, h_min_ellip = si_barrier_cert_ellip(dxi, x_si,thetas)     # the second barrier being elliptical
 
         ############################# selection ########################################
         # Use the second single-integrator-to-unicycle mapping to map to unicycle
-        dxi_cir, h_min_cir = si_barrier_cert_cir(dxi, x_si)                # the first barrier being circular
-        dxi_ellip, h_min_ellip = si_barrier_cert_ellip(dxi, x_si,thetas)     # the second barrier being elliptical
+        dxu_cir = si_to_uni_dyn(dxi_cir, x) # circular
+        dxu_ellip = si_to_uni_dyn(dxi_ellip, x) # elliptical
         
         # Default shape
         # dxu = dxu_cir
@@ -387,13 +387,13 @@ while(1):
         target_list.append(current_target_shape)
         ########################################Time varying CBF#####################################
         si_barrier_cert_tv = create_single_integrator_barrier_certificate_time_varying(Delta=Delta,lamb=lamb,target_shape=current_target_shape,Delta_dot=Delta_dot
-                                                                                       ,barrier_gain=1,safety_radius=radius
+                                                                                       ,barrier_gain=0.1,safety_radius=radius
                                                                                        ,safety_a=a,safety_b=b)  
 
         # si_barrier_cert_tv = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a,safety_b=b)
         dxi_tv = si_barrier_cert_tv(dxi, x_si, thetas)  
         dxu_tv = si_to_uni_dyn(dxi_tv, x)      
-        dxu = dxu_tv
+        dxu = dxu_ellip
 
         # dxu = dxu_ellip # for invariant-CBF experiments 
 

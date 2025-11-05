@@ -10,10 +10,10 @@ norms = np.load("u_norms.npy")
 # Extract the circular and elliptical norms
 norm_dxi_cir = norms[:, 0]  # First column
 norm_dxi_ellip = norms[:, 1]  # Second column
-norm_varying = norms[:, 2] # Third column
-# norm_dxi_tri = norms[:, 2] # 
-# norm_dxi_square = norms[:, 3] # 
-# norm_varying = norms[:, 4] # 
+# norm_varying = norms[:, 2] # Third column
+norm_dxi_tri = norms[:, 2] # 
+norm_dxi_square = norms[:, 3] # 
+norm_varying = norms[:, 4] # 
 ############ Add other shapes later ########################
 
 # Generate time indices (assuming sequential iterations)
@@ -34,11 +34,11 @@ plt.plot(iterations, norm_dxi_cir, label=r"\textbf{Circular CBF} $\mathbf{\Vert 
 plt.plot(iterations, norm_dxi_ellip, label=r"\textbf{Elliptical CBF} $\mathbf{\Vert u\Vert}$", 
          linestyle=':', linewidth=3, color='r')
 
-# plt.plot(iterations, norm_dxi_tri, label=r"\textbf{Triangular CBF} $\mathbf{\Vert u\Vert}$", 
-#          linestyle='solid', linewidth=4.5, color='g')
+plt.plot(iterations, norm_dxi_tri, label=r"\textbf{Triangular CBF} $\mathbf{\Vert u\Vert}$", 
+         linestyle='solid', linewidth=4.5, color='g')
 
-# plt.plot(iterations, norm_dxi_square, label=r"\textbf{Square CBF} $\mathbf{\Vert u\Vert}$", 
-#          linestyle=':', linewidth=3, color='orange')
+plt.plot(iterations, norm_dxi_square, label=r"\textbf{Square CBF} $\mathbf{\Vert u\Vert}$", 
+         linestyle=':', linewidth=3, color='orange')
 
 plt.plot(iterations, norm_varying, label=r"\textbf{Time-Varying CBF} $\mathbf{\Vert u\Vert}$", 
          linestyle='solid', linewidth=4.5, color='purple', alpha=0.5)
