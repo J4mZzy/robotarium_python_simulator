@@ -359,36 +359,28 @@ while(1):
         # Generating safe inputs
         dxi_cir, h_min_cir = si_barrier_cert_cir(dxi, x_si)                # the first barrier being circular
         dxi_ellip, h_min_ellip = si_barrier_cert_ellip(dxi, x_si,thetas)     # the second barrier being elliptical
-        dxi_tri, h_min_tri = si_barrier_cert_tri(dxi, x_si,thetas)     # the third barrier being triangular
-        dxi_square, h_min_square = si_barrier_cert_sqaure(dxi, x_si,thetas)     # the fourth barrier being square
 
         ############################# selection ########################################
         # Use the second single-integrator-to-unicycle mapping to map to unicycle
         dxu_cir = si_to_uni_dyn(dxi_cir, x) # circular
         dxu_ellip = si_to_uni_dyn(dxi_ellip, x) # elliptical
-        dxu_tri = si_to_uni_dyn(dxi_tri, x) # triangular
-        dxu_square = si_to_uni_dyn(dxi_square, x) # square
         
         # Computing norms
         norm_dxi_cir = np.linalg.norm(dxi_cir,ord=2)
         norm_dxi_ellip = np.linalg.norm(dxi_ellip,ord=2)
-        norm_dxi_tri = np.linalg.norm(dxi_tri,ord=2)
-        norm_dxi_sqaure = np.linalg.norm(dxi_square,ord=2)
 
         # Append the norms to the lists for post-processing
         norm_dxi_cir_list.append(norm_dxi_cir)
         norm_dxi_ellip_list.append(norm_dxi_ellip)
-        norm_dxi_tri_list.append(norm_dxi_tri)
-        norm_dxi_square_list.append(norm_dxi_sqaure)
 
         # Finding s_t, which is the shape we are morphing to
-        sorted_target_shapes = np.argsort([-norm_dxi_cir,-norm_dxi_ellip,-norm_dxi_tri,-norm_dxi_sqaure]) # sorted list
+        sorted_target_shapes = np.argsort([-norm_dxi_cir,-norm_dxi_ellip]) # sorted list
         # print("sorted_target_shapes",sorted_target_shapes)
 
         # h_min from each certificate
-        hmins = np.array([h_min_cir, h_min_ellip, h_min_tri, h_min_square], dtype=float)
+        hmins = np.array([h_min_cir, h_min_ellip], dtype=float)
 
-        for i in range(CBF_n):
+        for i in range(2):
             if hmins[sorted_target_shapes[i]] > 0:
                 desired_target_shape = sorted_target_shapes[i] + 1 
                 break
@@ -491,7 +483,7 @@ r.call_at_scripts_end()
 
 # Convert lists to a single 2D array
 # u_norms_array = np.column_stack((norm_dxi_cir_list, norm_dxi_ellip_list, norm_dxi_tv_list))
-u_norms_array = np.column_stack((norm_dxi_cir_list, norm_dxi_ellip_list, norm_dxi_tri_list, norm_dxi_square_list, norm_dxi_tv_list))
+u_norms_array = np.column_stack((norm_dxi_cir_list, norm_dxi_ellip_list, norm_dxi_tv_list))
 
 #Save Data
 print(time.time() - exp_start_time)

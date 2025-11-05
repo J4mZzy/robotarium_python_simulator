@@ -1471,9 +1471,9 @@ def create_single_integrator_barrier_certificate_time_varying_with_obstacles(Del
 
         result = np.reshape(result, (2, -1), order='F')
         
-        norms2 = np.linalg.norm(result, 2, axis=0)
-        idxs_to_normalize2 = (norms2 > 0.2)
-        result[:, idxs_to_normalize2] *= 0.2 / norms2[idxs_to_normalize2]
+        # norms2 = np.linalg.norm(result, 2, axis=0)
+        # idxs_to_normalize2 = (norms2 > 0.2)
+        # result[:, idxs_to_normalize2] *= 0.2 / norms2[idxs_to_normalize2]
 
         return result
 
