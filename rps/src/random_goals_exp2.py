@@ -21,7 +21,7 @@ iterations = 1000
 ## The arena is bounded between x \in (-1.6,1.6)  y\in (-1,1) 
 
 # Number of robots
-N = 16 # 2,4,8,11,16
+N = 16 # 4,8,11,16
 
 # Layout params
 rect_width   = 2.5

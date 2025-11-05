@@ -52,10 +52,14 @@ def create_single_integrator_barrier_certificate(barrier_gain=100, safety_radius
         assert dxi.shape[0] == 2, "In the function created by the create_single_integrator_barrier_certificate function, the dimension of the robot single integrator velocity command (dxi) must be 2 ([x_dot;y_dot]). Recieved dimension %r." % dxi.shape[0]
         assert x.shape[1] == dxi.shape[1], "In the function created by the create_single_integrator_barrier_certificate function, the number of robot states (x) must be equal to the number of robot single integrator velocity commands (dxi). Recieved a current robot pose input array (x) of size %r x %r and single integrator velocity array (dxi) of size %r x %r." % (x.shape[0], x.shape[1], dxi.shape[0], dxi.shape[1])
 
+        obstacle_centers = np.array([[-0.3,  0.3],
+                                 [-0.2,  0.2]], dtype=float)  # shape (2, 2)
+        obstacle_radius = 0.1 # fixed radius   
+        K = 2     
         
         # Initialize some variables for computational savings
         N = dxi.shape[1]
-        num_constraints = int(comb(N, 2))*2
+        num_constraints = int(comb(N, 2))+N*K
         A = np.zeros((num_constraints, 2*N))
         b = np.zeros(num_constraints)
         H = sparse(matrix(2*np.identity(2*N)))
@@ -78,6 +82,18 @@ def create_single_integrator_barrier_certificate(barrier_gain=100, safety_radius
 
                 if h < h_min:
                     h_min = h
+
+        for i in range(N):
+                    xi = x[:, i]
+                    for k in range(K):
+                        ck = obstacle_centers[:, k]
+                        err = xi - ck
+                        h_obs = (err[0] * err[0] + err[1] * err[1]) - np.power(obstacle_radius, 2)
+
+                        # Only agent i's control appears
+                        A[count, (2 * i, 2 * i + 1)] = -2 * err
+                        b[count] = 10 * np.power(h_obs, 3) # fixed gain
+                        count += 1
 
         # Threshold control inputs before QP
         norms = np.linalg.norm(dxi, 2, 0)
@@ -271,16 +287,20 @@ def create_single_integrator_barrier_certificate_ellipse(barrier_gain=100, safet
         assert dxi.shape[0] == 2, "The dimension of the robot single integrator velocity command must be 2 ([x_dot;y_dot]). Received dimension %r." % dxi.shape[0]
         assert x.shape[1] == dxi.shape[1], "The number of robot states must be equal to the number of robot single integrator velocity commands. Received x: %r x %r, dxi: %r x %r." % (x.shape[0], x.shape[1], dxi.shape[0], dxi.shape[1])
 
+        obstacle_centers = np.array([[-0.3,  0.3],
+                                 [-0.2,  0.2]], dtype=float)  # shape (2, 2)
+        obstacle_radius = 0.1 # fixed radius 
+        K = 2
+
         # Initialize variables for computational savings
         N = dxi.shape[1]
-        num_constraints = int(N * (N - 1))
+        num_constraints = int(N * (N - 1)/2)+N*K
         A = np.zeros((num_constraints, 2*N))
         b = np.zeros(num_constraints)
         H = sparse(matrix(2 * np.identity(2*N)))
         h_min = np.inf
 
         count = 0
-        # theta=theta+np.pi/4
 
         # Centralized QP
         for i in range(N-1):
@@ -314,6 +334,18 @@ def create_single_integrator_barrier_certificate_ellipse(barrier_gain=100, safet
 
                 if h < h_min:
                     h_min = h
+
+        for i in range(N):
+                    xi = x[:, i]
+                    for k in range(K):
+                        ck = obstacle_centers[:, k]
+                        err = xi - ck
+                        h_obs = (err[0] * err[0] + err[1] * err[1]) - np.power(obstacle_radius, 2)
+
+                        # Only agent i's control appears
+                        A[count, (2 * i, 2 * i + 1)] = -2 * err
+                        b[count] = 10 * np.power(h_obs, 3) # fixed gain
+                        count += 1        
 
 
         # Threshold control inputs before QP
@@ -563,9 +595,14 @@ def create_single_integrator_barrier_certificate_time_varying(Delta, lamb,target
         assert dxi.shape[0] == 2, "The dimension of the robot single integrator velocity command must be 2 ([x_dot;y_dot]). Received dimension %r." % dxi.shape[0]
         assert x.shape[1] == dxi.shape[1], "The number of robot states must be equal to the number of robot single integrator velocity commands. Received x: %r x %r, dxi: %r x %r." % (x.shape[0], x.shape[1], dxi.shape[0], dxi.shape[1])
 
+        obstacle_centers = np.array([[-0.3,  0.3],
+                                 [-0.2,  0.2]], dtype=float)  # shape (2, 2)
+        obstacle_radius = 0.1 # fixed radius
+        K = 2
+
         # Initialize variables for computational savings
         N = dxi.shape[1]
-        num_constraints = int(N * (N - 1)/2)
+        num_constraints = int(N * (N - 1)/2)+N*K
         A = np.zeros((num_constraints, 2*N))
         b = np.zeros(num_constraints)
         H = sparse(matrix(2 * np.identity(2*N)))
@@ -683,6 +720,18 @@ def create_single_integrator_barrier_certificate_time_varying(Delta, lamb,target
                 b[count] = barrier_gain * h_tv**3 + Delta_dot * diff
                 #  Delta_dot * diff
                 count += 1
+
+        for i in range(N):
+                    xi = x[:, i]
+                    for k in range(K):
+                        ck = obstacle_centers[:, k]
+                        err = xi - ck
+                        h_obs = (err[0] * err[0] + err[1] * err[1]) - np.power(obstacle_radius, 2)
+
+                        # Only agent i's control appears
+                        A[count, (2 * i, 2 * i + 1)] = -2 * err
+                        b[count] = 10 * np.power(h_obs, 3) # fixed gain
+                        count += 1
 
         # Threshold control inputs before QP
         norms = np.linalg.norm(dxi, 2, axis=0)

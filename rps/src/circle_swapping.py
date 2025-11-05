@@ -21,7 +21,7 @@ iterations = 1000
 ## The arena is bounded between x \in (-1.6,1.6)  y\in (-1,1) 
 
 # Number of robots
-N = 16 # 2,4,8,11,16,20
+N = 16 # 4,8,11,16,20
 
 # radius of the circle robots are forming
 circle_radius = 0.9
@@ -36,8 +36,15 @@ initial_heading = theta + np.pi  # Heading towards the center (add pi to point i
 
 # Combine initial positions into the required format (x, y, theta)
 initial_conditions = np.array([initial_x, initial_y, initial_heading])
+
 # Instantiate Robotarium object
-r = robotarium.Robotarium(number_of_robots=N, show_figure=True, sim_in_real_time=True, initial_conditions=initial_conditions)
+r = robotarium.Robotarium(
+    number_of_robots=N,
+    show_figure=True,
+    sim_in_real_time=True,
+    initial_conditions=initial_conditions
+)
+
 # Define goal points: for a swapping behavior, we can simply offset the current positions
 goal_points = np.array([initial_x, initial_y, theta])  # Start by setting goal points to the current positions
 goal_points[0, :] = -initial_conditions[0,:] 
@@ -64,16 +71,18 @@ CM = cmap(np.linspace(0, 1, N))  # Generate N colors evenly spaced within the co
 # CM = np.array([[0, 0, 0]] * N)
  
 # Default Barrier Parameters (for visualization) 
-safety_radius_view = 0.15
+safety_radius_view = 0.2
 safety_radius_marker_size = determine_marker_size(r,safety_radius_view) # Will scale the plotted markers to be the diameter of provided argument (in meters)
 font_height_meters = 0.2
 font_height_points = determine_font_size(r,font_height_meters) # Will scale the plotted font height to that of the provided argument (in meters)
+obs_r = 0.10*10000 # for visual
+obs_r_marker_size = determine_marker_size(r,obs_r) # Will scale the plotted markers to be the diameter of provided argument (in meters)
 
 # Create single integrator position controller
 si_position_controller = create_si_position_controller()
 
 # Initialize parameters
-radius = 0.22
+radius = 0.25
 a = 0.25
 b = 0.25*0.8
 w = 0.40
@@ -212,8 +221,8 @@ H = init_hvis(r.axes, N, CM, radius=radius, a=a, b=b, w=w, grid_res=201, line_w=
 # to collide.  Thus, we're going to use barrier certificates (in a centrialized way)
 CBF_n = 4 # how many CBFs we are using 
 
-si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=1,safety_radius=radius)
-si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a,safety_b=b)
+si_barrier_cert_cir = create_single_integrator_barrier_certificate(barrier_gain=100,safety_radius=radius)
+si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse(barrier_gain=100,safety_a=a,safety_b=b)
 # si_barrier_cert_tri = create_single_integrator_barrier_certificate_triangle_with_obstacles(barrier_gain=1)
 # si_barrier_cert_sqaure = create_single_integrator_barrier_certificate_square_with_obstacles(barrier_gain=1,safety_width=w,norm=3)
 
@@ -228,7 +237,6 @@ Delta_list = []
 target_list = []
 
 # Initialize the transition variables
-T = 1  # Duration for the morphing transition in seconds
 exp_start_time = time.time()
 
 # Create SI to UNI dynamics tranformation
@@ -254,11 +262,15 @@ goal_caption = ['G{0}'.format(ii) for ii in range(goal_points.shape[1])]
 # goal_orientation_arrows = [r.axes.arrow(goal_points[0,ii], goal_points[1,ii], goal_marker_size_m*np.cos(goal_points[2,ii]), goal_marker_size_m*np.sin(goal_points[2,ii]), width = 0.01, length_includes_head=True, color = CM[ii,:], zorder=-2)
 # for ii in range(goal_points.shape[1])]
 
-#Plot text for caption
+# Plot text for caption
 goal_points_text = [r.axes.text(goal_points[0,ii], goal_points[1,ii], goal_caption[ii], fontsize=font_size, color='k',fontweight='bold',horizontalalignment='center',verticalalignment='center',zorder=-3)
 for ii in range(goal_points.shape[1])]
 goal_markers = [r.axes.scatter(goal_points[0,ii], goal_points[1,ii], s=marker_size_goal, marker='s', facecolors='none',edgecolors=CM[ii,:],linewidth=line_width,zorder=-3)
 for ii in range(goal_points.shape[1])]
+
+## Obstacles 
+obstacle_1 = r.axes.scatter(0.3, 0.2, s=obs_r, marker='o', facecolors=[1, 0, 0],linewidth=line_width,zorder=-3) # [133/255, 116/255, 55/255]
+obstacle_1 = r.axes.scatter(-0.3, -0.2, s=obs_r, marker='o', facecolors=[0, 0, 1],linewidth=line_width,zorder=-3) # [133/255, 116/255, 55/255]
 
 r.step()
 # r.step_no_error() (for robotarium with 20 agents)
@@ -386,7 +398,7 @@ while(1):
         target_list.append(current_target_shape)
         ########################################Time varying CBF#####################################
         si_barrier_cert_tv = create_single_integrator_barrier_certificate_time_varying(Delta=Delta,lamb=lamb,target_shape=current_target_shape,Delta_dot=Delta_dot
-                                                                                       ,barrier_gain=1,safety_radius=radius
+                                                                                       ,barrier_gain=100,safety_radius=radius
                                                                                        ,safety_a=a,safety_b=b)  
 
         # si_barrier_cert_tv = create_single_integrator_barrier_certificate_ellipse(barrier_gain=1,safety_a=a,safety_b=b)

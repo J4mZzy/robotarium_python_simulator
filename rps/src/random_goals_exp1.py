@@ -21,7 +21,7 @@ iterations = 1000
 ## The arena is bounded between x \in (-1.6,1.6)  y\in (-1,1) 
 
 # Number of robots
-N = 16 # 2,4,8,11,16
+N = 16 # 4,8,11,16
 
 # Layout params
 rect_width   = 2.5
@@ -252,15 +252,14 @@ def update_hvis(H, x, thetas, L, base_shape, target_shape, Delta, *, plot_scale=
         lc_list[i].set_segments(segs_world)
 
 H = init_hvis(r.axes, N, CM, radius=radius, a=a, b=b, w=w, grid_res=201, line_w=2)
-#########################################################################################
 
 ############################################ CBF Library #######################################################
 # We're working in single-integrator dynamics, and we don't want the robots
 # to collide.  Thus, we're going to use barrier certificates (in a centrialized way)
 CBF_n = 4 # how many CBFs we are using 
 
-si_barrier_cert_cir = create_single_integrator_barrier_certificate_with_obstacles(barrier_gain=10,safety_radius=radius)
-si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse_with_obstacles(barrier_gain=10,safety_a=a,safety_b=b)
+si_barrier_cert_cir = create_single_integrator_barrier_certificate_with_obstacles(barrier_gain=100,safety_radius=radius)
+si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse_with_obstacles(barrier_gain=100,safety_a=a,safety_b=b)
 # si_barrier_cert_tri = create_single_integrator_barrier_certificate_triangle_with_obstacles(barrier_gain=0.1)
 # si_barrier_cert_sqaure = create_single_integrator_barrier_certificate_square_with_obstacles(barrier_gain=0.1,safety_width=w,norm=3)
 
@@ -438,7 +437,7 @@ while(1):
         target_list.append(current_target_shape)
         ########################################Time varying CBF#####################################
         si_barrier_cert_tv = create_single_integrator_barrier_certificate_time_varying_with_obstacles(Delta=Delta,lamb=lamb,target_shape=current_target_shape,Delta_dot=Delta_dot
-                                                                                                      ,barrier_gain=10,safety_radius=radius,safety_a=a,safety_b=b)  
+                                                                                                      ,barrier_gain=100,safety_radius=radius,safety_a=a,safety_b=b)  
 
         dxi_tv = si_barrier_cert_tv(dxi, x_si, thetas)  
         dxu_tv = si_to_uni_dyn(dxi_tv, x)      
