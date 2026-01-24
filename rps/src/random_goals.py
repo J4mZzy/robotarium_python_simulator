@@ -11,7 +11,6 @@ from rps.utilities.transformations import create_si_to_uni_mapping
 import numpy as np
 import matplotlib.pyplot as plt
 import time
-import polars as pl
 import itertools
 
 from barrier_certificates import (
@@ -93,41 +92,41 @@ b = 0.25*0.8
 w = 0.40
 
 circular_barrier = SICircularBarrierCertificate(
-    barrier_gain=100,
+    barrier_gain=10,
     safety_radius=radius,
-    magnitude_limit=0.2,
+    magnitude_limit=0.1,
     obstacle_gain=10,
     obstacles=[o1, o2]
 )
 elliptical_barrier = SIEllipticalBarrierCertificate(
-    barrier_gain=100,
+    barrier_gain=10,
     safety_a=a,
     safety_b=b,
-    magnitude_limit=0.2,
+    magnitude_limit=0.1,
     obstacle_gain=10,
     obstacles=[o1, o2]
 )
 square_barrier = SISquareBarrierCertificate(
-    barrier_gain=100,
+    barrier_gain=10,
     safety_width=w,
-    magnitude_limit=0.2,
+    magnitude_limit=0.1,
     obstacle_gain=10,
     obstacles=[o1, o2]
 )
 triangle_barrier = SITriangleBarrierCertificate(
-    barrier_gain=100,
-    magnitude_limit=0.2,
+    barrier_gain=10,
+    magnitude_limit=0.1,
     obstacle_gain=10,
     obstacles=[o1, o2]
 )
 barrier = SIDeltaBarrierCertificate(
-    barrier_gain=100,
-    magnitude_limit=0.2,
+    barrier_gain=10,
+    magnitude_limit=0.1,
     barriers=[
         circular_barrier,
         elliptical_barrier,
-        square_barrier,
-        triangle_barrier
+        triangle_barrier,
+        square_barrier
     ],
     obstacle_gain=10,
     obstacles=[o1, o2]
@@ -145,7 +144,7 @@ square_weights = []
 
 N = 16
 
-rng = np.random.default_rng(1)
+rng = np.random.default_rng(2)
 initial_conditions, goal_points = generate_initial_conditions(N)
 perm = rng.permutation(N)
 goal_points = goal_points[:, perm]
@@ -154,6 +153,7 @@ r = robotarium.Robotarium(
     number_of_robots=N,
     show_figure=True,
     sim_in_real_time=False,
+    enable_safety=False,
     initial_conditions=initial_conditions
 )
 
@@ -192,7 +192,6 @@ for ii in range(goal_points.shape[1])]
 trajectories = [[] for i in range(N)]
 
 t = 0
-start_time = None
 dt = None
 prev_time = None
 
@@ -208,8 +207,8 @@ negative_iterations = 0
 complete = False
 # Maximum of 4 minutes of time
 max_iterations = 30 * 60 * 4
+start_time = time.time()
 while iterations < max_iterations:
-    start_time = time.time()
     x = r.get_poses()
 
     for i in range(N):
@@ -224,8 +223,13 @@ while iterations < max_iterations:
         negative_iterations += 1
     h_values.append(h)
 
-    update_hvis(H, x, thetas, L, barrier.current_shape(), barrier.target_shape(), 1,
-                    plot_scale=0.45, densify=True, densify_factor=150.0)
+    if isinstance(barrier, SIDeltaBarrierCertificate):
+        update_hvis(H, x, thetas, L, barrier.current_shape(), barrier.target_shape(), barrier.delta_func(barrier.current_elapsed_time),
+                        plot_scale=0.45, densify=True, densify_factor=150.0)
+    else:
+        
+        update_hvis(H, x, thetas, L, barrier.current_shape(), barrier.target_shape(), 1,
+                        plot_scale=0.45, densify=True, densify_factor=150.0)
 
     r.set_velocities(np.arange(N), dxu)
 
@@ -239,8 +243,9 @@ while iterations < max_iterations:
     iterations += 1
 
 
+print(f"Total Time: {time.time() - start_time}")
 r.call_at_scripts_end()
 weights = np.array(simulation_weights)
-weights = [np.sum(weights[:, i]) / iterations for i in range(len(weights[0]))]
-print(f"Circle (%): {weights[0]}, Ellipse (%): {weights[1]}, Square (%): {weights[2]}, Triangle (%): {weights[3]}")
+weights = [np.sum(weights[:, i]) / iterations for i in range(4)]
+print(f"Circle (%): {weights[0]}, Ellipse (%): {weights[1]}, Triangle (%): {weights[2]}, Square (%): {weights[3]}")
 plt.close('all')

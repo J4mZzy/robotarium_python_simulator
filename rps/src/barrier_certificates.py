@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from abc import ABC, abstractmethod
 
 from typing import Callable
+import time
 
 # Unused for now, will include later for speed.
 # import quadprog as solver2
@@ -343,12 +344,12 @@ class SIDeltaBarrierCertificate(BarrierCertificate):
     ):
         super().__init__(barrier_gain, magnitude_limit, obstacle_gain, obstacles)
         self.barriers = barriers
-        self.dt = dt
         self.delta_func = delta_func
         self.delta_der = delta_der
         self.target_barrier_idx = 0
         self.current_barrier_idx = 0
-        self.counter = 60
+        self.current_elapsed_time = 2
+        self.last_update_time = time.time()
 
     def name(self) -> str:
         return f"delta({'-'.join([barrier.name() for barrier in self.barriers])})"
@@ -360,14 +361,14 @@ class SIDeltaBarrierCertificate(BarrierCertificate):
         return self.barriers[self.target_barrier_idx].current_shape()
 
     def current_barrier_weight(self):
-        delta = self.delta_func(self.counter * self.dt)
-        weights = [0.0, 0.0, 0.0, 0.0]
-        weights[self.current_barrier_idx] = 1 - delta
-        weights[self.target_barrier_idx] = delta
+        delta = self.delta_func(self.current_elapsed_time)
+        weights = np.array([0.0, 0.0, 0.0, 0.0])
+        weights += (1 - delta) * np.array(self.barriers[self.current_barrier_idx].current_barrier_weight())
+        weights += delta * np.array(self.barriers[self.target_barrier_idx].current_barrier_weight())
         return weights
 
     def h(self, x1: np.ndarray, x2: np.ndarray) -> float:
-        delta = self.delta_func(self.counter * self.dt)
+        delta = self.delta_func(self.current_elapsed_time)
         return self.h(x1, x2, delta)
 
     def h(self, x1: np.ndarray, x2: np.ndarray, delta: float) -> float:
@@ -375,7 +376,7 @@ class SIDeltaBarrierCertificate(BarrierCertificate):
             + delta * self.barriers[self.target_barrier_idx].h(x1, x2)
 
     def dh(self, x1: np.ndarray, x2: np.ndarray) -> np.ndarray:
-        delta = self.delta_func(self.counter * self.dt)
+        delta = self.delta_func(self.current_elapsed_time)
         return self.dh(x1, x2, delta)
 
     def dh(self, x1: np.ndarray, x2: np.ndarray, delta: float) -> np.ndarray:
@@ -387,9 +388,11 @@ class SIDeltaBarrierCertificate(BarrierCertificate):
         ])
     
     def apply(self, dxi: np.ndarray, x: np.ndarray) -> tuple[np.ndarray, float]:
+        self.current_elapsed_time += time.time() - self.last_update_time
+        self.last_update_time = time.time()
         dxi = np.copy(dxi)
-        delta = self.delta_func(self.counter * self.dt)
-        delta_dot = self.delta_der(self.counter * self.dt)
+        delta = self.delta_func(self.current_elapsed_time)
+        delta_dot = self.delta_der(self.current_elapsed_time)
 
         if delta >= 1:
             self.current_barrier_idx = self.target_barrier_idx
@@ -413,7 +416,7 @@ class SIDeltaBarrierCertificate(BarrierCertificate):
 
             if self.current_barrier_idx != desired_barrier_idx:
                 self.target_barrier_idx = desired_barrier_idx
-                self.counter = 0
+                self.current_elapsed_time = 0
 
         # Compute h_ij(x, t)
         N = dxi.shape[1]
@@ -457,7 +460,6 @@ class SIDeltaBarrierCertificate(BarrierCertificate):
 
         f = -2 * np.reshape(dxi, 2*N, order="F")
         result = qp(H, matrix(f), matrix(A), matrix(b))["x"]
-        self.counter += 1
 
         return np.reshape(result, (2, -1), order="F"), h_min
 
