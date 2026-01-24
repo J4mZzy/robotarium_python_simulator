@@ -23,6 +23,8 @@ options['show_progress'] = False
 options['reltol'] = 1e-2 # was e-2
 options['feastol'] = 1e-2 # was e-4
 options['maxiters'] = 50 # default is 100
+options['initvals'] = None
+
 
 @dataclass
 class Obstacle:
@@ -115,6 +117,7 @@ class BarrierCertificate(ABC):
         :return: The updated command velocity for each robot and the minimum h-value
         :rtype: tuple[ndarray[_AnyShape, dtype[Any]], float]
         """
+        dxi = np.copy(dxi)
         N = dxi.shape[1]
         num_constraints = int(comb(N, 2)) + N * len(self.obstacles)
         A = np.zeros((num_constraints, 2*N))
@@ -157,7 +160,8 @@ class BarrierCertificate(ABC):
         f = -2 * np.reshape(dxi, 2*N, order="F")
         result = qp(H, matrix(f), matrix(A), matrix(b))["x"]
 
-        return np.reshape(result, (2, -1), order="F"), h_min
+        u_star = np.reshape(result, (2, -1), order="F")
+        return u_star, h_min
 
 class SICircularBarrierCertificate(BarrierCertificate):
     def __init__(
@@ -192,7 +196,7 @@ class SICircularBarrierCertificate(BarrierCertificate):
         return np.array([
             2 * error[0] / np.power(self.safety_radius, 2),
             2 * error[1] / np.power(self.safety_radius, 2)
-        ])
+        ])    
     
 class SIEllipticalBarrierCertificate(BarrierCertificate):
     def __init__(
@@ -342,9 +346,9 @@ class SIDeltaBarrierCertificate(BarrierCertificate):
         self.dt = dt
         self.delta_func = delta_func
         self.delta_der = delta_der
-        self.target_barrier_idx = 1
-        self.current_barrier_idx = 1
-        self.counter = 0
+        self.target_barrier_idx = 0
+        self.current_barrier_idx = 0
+        self.counter = 60
 
     def name(self) -> str:
         return f"delta({'-'.join([barrier.name() for barrier in self.barriers])})"
@@ -358,8 +362,8 @@ class SIDeltaBarrierCertificate(BarrierCertificate):
     def current_barrier_weight(self):
         delta = self.delta_func(self.counter * self.dt)
         weights = [0.0, 0.0, 0.0, 0.0]
-        weights[self.current_barrier_idx] = delta
-        weights[self.target_barrier_idx] = 1 - delta
+        weights[self.current_barrier_idx] = 1 - delta
+        weights[self.target_barrier_idx] = delta
         return weights
 
     def h(self, x1: np.ndarray, x2: np.ndarray) -> float:
@@ -367,8 +371,8 @@ class SIDeltaBarrierCertificate(BarrierCertificate):
         return self.h(x1, x2, delta)
 
     def h(self, x1: np.ndarray, x2: np.ndarray, delta: float) -> float:
-        return delta * self.barriers[self.current_barrier_idx].h(x1, x2) \
-            + (1 - delta) * self.barriers[self.target_barrier_idx].h(x1, x2)
+        return (1 - delta) * self.barriers[self.current_barrier_idx].h(x1, x2) \
+            + delta * self.barriers[self.target_barrier_idx].h(x1, x2)
 
     def dh(self, x1: np.ndarray, x2: np.ndarray) -> np.ndarray:
         delta = self.delta_func(self.counter * self.dt)
@@ -378,11 +382,12 @@ class SIDeltaBarrierCertificate(BarrierCertificate):
         dh1 = self.barriers[self.current_barrier_idx].dh(x1, x2)
         dh2 = self.barriers[self.target_barrier_idx].dh(x1, x2)
         return np.array([
-            delta * dh1[0] + (1 - delta) * dh2[0],
-            delta * dh1[1] + (1 - delta) * dh2[1]
+            (1 - delta) * dh1[0] + delta * dh2[0],
+            (1 - delta) * dh1[1] + delta * dh2[1]
         ])
     
     def apply(self, dxi: np.ndarray, x: np.ndarray) -> tuple[np.ndarray, float]:
+        dxi = np.copy(dxi)
         delta = self.delta_func(self.counter * self.dt)
         delta_dot = self.delta_der(self.counter * self.dt)
 
@@ -392,16 +397,19 @@ class SIDeltaBarrierCertificate(BarrierCertificate):
             u_stars, h_mins = [], []
             for barrier in self.barriers:
                 u_star, h_min = barrier.apply(dxi, x)
+                u_star = np.sum(np.linalg.norm(u_star, axis=0)) / dxi.shape[1]
                 u_stars.append(u_star)
                 h_mins.append(h_min)
-
+            
             # Find all barriers yielding a positive h-value
+
             s = [i for i in range(len(self.barriers)) if h_mins[i] >= 0]
             desired_barrier_idx: int
-            if len(s) < 0:
+            if len(s) == 0:
                 desired_barrier_idx = self.current_barrier_idx
             else:
-                desired_barrier_idx = np.argmax(np.array(h_min))
+                desired_barrier_idx = np.argmax(np.array(u_stars)[s])
+            print(desired_barrier_idx)
 
             if self.current_barrier_idx != desired_barrier_idx:
                 self.target_barrier_idx = desired_barrier_idx
