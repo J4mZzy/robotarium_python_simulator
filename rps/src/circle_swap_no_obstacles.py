@@ -4,28 +4,28 @@
 
 import rps.robotarium as robotarium
 from rps.utilities.transformations import create_si_to_uni_mapping
-from rps.utilities.misc import at_pose, determine_marker_size, determine_font_size
-from rps.utilities.controllers import create_hybrid_unicycle_pose_controller, create_si_position_controller
+from rps.utilities.misc import determine_marker_size, determine_font_size
+from rps.utilities.controllers import create_si_position_controller
 from rps.utilities.transformations import create_si_to_uni_mapping
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.collections import LineCollection
 import time
 
 from barrier_certificates import (
-    create_si_circular_barrier_certificate,
-    create_si_elliptical_barrier_certificate,
-    create_si_square_barrier_certificate,
-    create_si_triangle_barrier_certificate
+    SICircularBarrierCertificate,
+    SIEllipticalBarrierCertificate,
+    SISquareBarrierCertificate,
+    SITriangleBarrierCertificate,
+    SIDeltaBarrierCertificate
 )
-from graphing_utilities import densify_segments, init_hvis, update_hvis
+from graphing_utilities import init_hvis, update_hvis
 
 import matplotlib as mpl
 mpl.rcParams["path.simplify"] = False
 mpl.rcParams["agg.path.chunksize"] = 0
 
-N = 3
+N = 16
 circle_radius = 0.9
 theta = np.linspace(0, 2 * np.pi, N, endpoint=False)
 initial_xs = circle_radius * np.cos(theta)
@@ -36,7 +36,7 @@ initial_conditions = np.array([initial_xs, initial_ys, initial_heading])
 r = robotarium.Robotarium(
     number_of_robots=N,
     show_figure=True,
-    sim_in_real_time=True,
+    sim_in_real_time=False,
     initial_conditions=initial_conditions
 )
 
@@ -58,33 +58,36 @@ obs_r_marker_size = determine_marker_size(r, 0.10 * 10000)
 
 H = init_hvis(r.axes, N, CM, radius=radius, a=a, b=b, w=w, grid_res=201, line_w=2)
 
-# barrier = create_si_circular_barrier_certificate(
-#     barrier_gain=100,
-#     safety_radius=radius,
-#     magnitude_limit=0.2
-# )
-# barrier = create_si_elliptical_barrier_certificate(
-#     barrier_gain=100,
-#     safety_a=a,
-#     safety_b=b,
-#     magnitude_limit=0.2
-# )
-barrier = create_si_square_barrier_certificate(
+circular_barrier = SICircularBarrierCertificate(
     barrier_gain=100,
-    safety_width=w,
+    safety_radius=radius,
     magnitude_limit=0.2
 )
-# barrier = create_si_triangle_barrier_certificate(
+barrier = SIEllipticalBarrierCertificate(
+    barrier_gain=100,
+    safety_a=a,
+    safety_b=b,
+    magnitude_limit=0.2
+)
+# barrier = SITriangleBarrierCertificate(
 #     barrier_gain=100,
 #     magnitude_limit=0.2
+# )
+# barrier = SISquareBarrierCertificate(
+#     barrier_gain=100,
+#     safety_width=w,
+#     magnitude_limit=0.2
+# )
+# barrier = SIDeltaBarrierCertificate(
+#     barrier_gain=100,
+#     magnitude_limit=0.2,
+#     barriers=[circular_barrier, elliptical_barrier, triangular_barrier, square_barrier],
 # )
 
 # Dynamics Transformation
 si_to_uni, uni_to_si = create_si_to_uni_mapping()
 # SI Controller
 controller = create_si_position_controller()
-# Controller
-# controller = create_hybrid_unicycle_pose_controller()
 
 # Create Goal Point Markers
 goal_marker_size_m = 0.1
@@ -115,7 +118,11 @@ r.step()
 
 h_values = []
 iterations = 0
-while True:
+negative_iterations = 0
+complete = False
+# Maximum of 4 minutes of time
+max_iterations = 30 * 60 * 4
+while iterations < max_iterations:
     start_time = time.time()
     x = r.get_poses()
 
@@ -124,23 +131,28 @@ while True:
 
     x_si = uni_to_si(x)
     dxi = controller(x_si, goal_points[:2, :])
-    dxi, h = barrier(dxi, x_si)
+    dxi, h = barrier.apply(dxi, x_si)
     dxu = si_to_uni(dxi, x)
 
     if h < 0:
-        print(f"Negative H Value Detected..., h: {h}")
+        negative_iterations += 1
     h_values.append(h)
 
-    update_hvis(H, x, thetas, L, 4, 4, 1,
+    update_hvis(H, x, thetas, L, 3, 3, 1,
                     plot_scale=0.45, densify=True, densify_factor=150.0)
 
     r.set_velocities(np.arange(N), dxu)
 
     if np.linalg.norm(goal_points[:2, :] - x_si) < 0.08:
+        complete = True
         break
 
     r.step()
     iterations += 1
 
-print(f"Simulation took {iterations * r.time_step} seconds")
+if not complete:
+    print("Simulation Did not Complete")
+else:
+    print(f"Simulation took {iterations * r.time_step} seconds")
+print(f"H was negative in {negative_iterations} iterations")
 r.call_at_scripts_end()

@@ -4,6 +4,13 @@ from barrier_certificates import *
 from rps.utilities.misc import *
 from rps.utilities.controllers import *
 
+from barrier_certificates import (
+    create_si_circular_barrier_certificate,
+    create_si_elliptical_barrier_certificate,
+    create_si_triangle_barrier_certificate,
+    create_si_square_barrier_certificate    
+)
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
@@ -75,7 +82,7 @@ else:
     goals_top = np.vstack([goals_top_x, goals_top_y, np.full(N, -np.pi/2)])
 
 # ----- Random unique assignment of goals to robots -----
-rng = np.random.default_rng(2)   # Reproducibility, using seed 1,2,3,4,5 for experiments
+rng = np.random.default_rng(1)   # Reproducibility, using seed 1,2,3,4,5 for experiments
 perm = rng.permutation(N)
 goal_points = goals_top[:, perm]    # robot i -> column i of goal_points
 
@@ -218,14 +225,10 @@ def update_hvis(H, x, thetas, L, base_shape, target_shape, Delta, *, plot_scale=
     h_tv_l   = (1.0 - Delta) * h_base_l + Delta * h_tgt_l
 
     # get the 0-level segments w/o leaving artists in the axes
-    if HAS_CONTOURGEN:
-        cg = _contour.QuadContourGenerator(UU, VV, h_tv_l, None, True, 0)
-        segs_local = cg.create_contour(0.0)   # list of (m x 2) in (u,v)
-    else:
-        cs = ax.contour(UU, VV, h_tv_l, levels=[0], linewidths=0)
-        segs_local = cs.allsegs[0] if getattr(cs, "allsegs", None) else []
-        try: cs.remove()
-        except Exception: pass
+    cs = ax.contour(UU, VV, h_tv_l, levels=[0], linewidths=0)
+    segs_local = cs.allsegs[0] if getattr(cs, "allsegs", None) else []
+    try: cs.remove()
+    except Exception: pass
 
     # optional smoothing of polylines
     if densify and len(segs_local):
@@ -258,8 +261,10 @@ H = init_hvis(r.axes, N, CM, radius=radius, a=a, b=b, w=w, grid_res=201, line_w=
 # to collide.  Thus, we're going to use barrier certificates (in a centrialized way)
 CBF_n = 4 # how many CBFs we are using 
 
-si_barrier_cert_cir = create_single_integrator_barrier_certificate_with_obstacles(barrier_gain=100,safety_radius=radius)
-si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse_with_obstacles(barrier_gain=100,safety_a=a,safety_b=b)
+# barrier = create_si_square_barrier_certificate(barrier_gain=100, safety_width=w, magnitude_limit=0.2)
+barrier = create_si_triangle_barrier_certificate(barrier_gain=100, magnitude_limit=0.2)
+# si_barrier_cert_cir = create_single_integrator_barrier_certificate_with_obstacles(barrier_gain=100,safety_radius=radius)
+# si_barrier_cert_ellip = create_single_integrator_barrier_certificate_ellipse_with_obstacles(barrier_gain=100,safety_a=a,safety_b=b)
 # si_barrier_cert_tri = create_single_integrator_barrier_certificate_triangle_with_obstacles(barrier_gain=0.1)
 # si_barrier_cert_sqaure = create_single_integrator_barrier_certificate_square_with_obstacles(barrier_gain=0.1,safety_width=w,norm=3)
 
@@ -356,33 +361,36 @@ while(1):
         ########################### barrier type ######################################
         # Use the barrier certificates to make sure that the agents don't collide
         # Generating safe inputs
-        dxi_cir, h_min_cir = si_barrier_cert_cir(dxi, x_si)                # the first barrier being circular
-        dxi_ellip, h_min_ellip = si_barrier_cert_ellip(dxi, x_si,thetas)     # the second barrier being elliptical
+        dxi, h_min = barrier(dxi, x_si)
+        print(h_min)
+        dxu = si_to_uni_dyn(dxi, x)
+        # dxi_cir, h_min_cir = si_barrier_cert_cir(dxi, x_si)                # the first barrier being circular
+        # dxi_ellip, h_min_ellip = si_barrier_cert_ellip(dxi, x_si,thetas)     # the second barrier being elliptical
 
         ############################# selection ########################################
         # Use the second single-integrator-to-unicycle mapping to map to unicycle
-        dxu_cir = si_to_uni_dyn(dxi_cir, x) # circular
-        dxu_ellip = si_to_uni_dyn(dxi_ellip, x) # elliptical
+        # dxu_cir = si_to_uni_dyn(dxi_cir, x) # circular
+        # dxu_ellip = si_to_uni_dyn(dxi_ellip, x) # elliptical
         
         # Computing norms
-        norm_dxi_cir = np.linalg.norm(dxi_cir,ord=2)
-        norm_dxi_ellip = np.linalg.norm(dxi_ellip,ord=2)
+        # norm_dxi_cir = np.linalg.norm(dxi_cir,ord=2)
+        # norm_dxi_ellip = np.linalg.norm(dxi_ellip,ord=2)
 
         # Append the norms to the lists for post-processing
-        norm_dxi_cir_list.append(norm_dxi_cir)
-        norm_dxi_ellip_list.append(norm_dxi_ellip)
+        # norm_dxi_cir_list.append(norm_dxi_cir)
+        # norm_dxi_ellip_list.append(norm_dxi_ellip)
 
         # Finding s_t, which is the shape we are morphing to
-        sorted_target_shapes = np.argsort([-norm_dxi_cir,-norm_dxi_ellip]) # sorted list
+        # sorted_target_shapes = np.argsort([-norm_dxi_cir,-norm_dxi_ellip]) # sorted list
         # print("sorted_target_shapes",sorted_target_shapes)
 
         # h_min from each certificate
-        hmins = np.array([h_min_cir, h_min_ellip], dtype=float)
+        # hmins = np.array([h_min_cir, h_min_ellip], dtype=float)
 
-        for i in range(2):
-            if hmins[sorted_target_shapes[i]] > 0:
-                desired_target_shape = sorted_target_shapes[i] + 1 
-                break
+        # for i in range(2):
+        #     if hmins[sorted_target_shapes[i]] > 0:
+        #         desired_target_shape = sorted_target_shapes[i] + 1 
+        #         break
 
         # print("desired_target_shape",desired_target_shape)
 
@@ -413,18 +421,18 @@ while(1):
         t = t + dt # update time
 
         # only change if Delta has reached 1
-        if current_target_shape != desired_target_shape:
-            if Delta == 1: # completed transformation to another shape and another target is selected        
-                for i in range(CBF_n):
-                    if i == current_target_shape - 1:
-                        lamb[i] = 1  # (1-Delta)*lamb[i] + Delta 
-                        base_shape = i+1 # keeps track of the base shape (lambda index + 1)
-                    else: 
-                        # not the target shape, set to 0
-                        lamb[i] = 0   # (1-Delta)*lamb[i] 
-                current_target_shape = desired_target_shape # switch target shape
-                Delta = 0 # reset Delta
-                t = 0 # reset time
+        # if current_target_shape != desired_target_shape:
+        #     if Delta == 1: # completed transformation to another shape and another target is selected        
+        #         for i in range(CBF_n):
+        #             if i == current_target_shape - 1:
+        #                 lamb[i] = 1  # (1-Delta)*lamb[i] + Delta 
+        #                 base_shape = i+1 # keeps track of the base shape (lambda index + 1)
+        #             else: 
+        #                 # not the target shape, set to 0
+        #                 lamb[i] = 0   # (1-Delta)*lamb[i] 
+        #         current_target_shape = desired_target_shape # switch target shape
+        #         Delta = 0 # reset Delta
+        #         t = 0 # reset time
 
         # print("dt",dt)
         # print("Delta",Delta)
@@ -436,12 +444,12 @@ while(1):
         Delta_list.append(Delta)
         target_list.append(current_target_shape)
         ########################################Time varying CBF#####################################
-        si_barrier_cert_tv = create_single_integrator_barrier_certificate_time_varying_with_obstacles(Delta=Delta,lamb=lamb,target_shape=current_target_shape,Delta_dot=Delta_dot
-                                                                                                      ,barrier_gain=100,safety_radius=radius,safety_a=a,safety_b=b)  
+        # si_barrier_cert_tv = create_single_integrator_barrier_certificate_time_varying_with_obstacles(Delta=Delta,lamb=lamb,target_shape=current_target_shape,Delta_dot=Delta_dot
+        #                                                                                               ,barrier_gain=100,safety_radius=radius,safety_a=a,safety_b=b)  
 
-        dxi_tv = si_barrier_cert_tv(dxi, x_si, thetas)  
-        dxu_tv = si_to_uni_dyn(dxi_tv, x)      
-        dxu = dxu_tv # modified input
+        # dxi_tv = si_barrier_cert_tv(dxi, x_si, thetas)  
+        # dxu_tv = si_to_uni_dyn(dxi_tv, x)      
+        # dxu = dxu_tv # modified input
         # dxu = dxu_ellip # for invariant-CBF experiments 
 
         ################################################################################
@@ -449,8 +457,8 @@ while(1):
         #################################################################################
         
         # Append the norms to the lists for post-processing
-        norm_dxi_tv = np.linalg.norm(dxi_tv,ord=2)
-        norm_dxi_tv_list.append(norm_dxi_tv)
+        # norm_dxi_tv = np.linalg.norm(dxi_tv,ord=2)
+        # norm_dxi_tv_list.append(norm_dxi_tv)
         # print("u_norm:",norm_dxi_tv)
 
         # Remove previous scatter plot markers
