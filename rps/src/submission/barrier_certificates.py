@@ -3,16 +3,13 @@ from cvxopt.blas import dot
 from cvxopt.solvers import qp, options
 from cvxopt import matrix, sparse
 
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
 
-from typing import Callable
 import time
 
 # Unused for now, will include later for speed.
 # import quadprog as solver2
 
-import itertools
 import numpy as np
 from scipy.special import comb
 
@@ -27,18 +24,19 @@ options['maxiters'] = 50 # default is 100
 options['initvals'] = None
 
 
-@dataclass
 class Obstacle:
-    position: np.ndarray
-    radius: float
+    def __init__(self, position, radius):
+        self.position = position
+        self.radius = radius
 
 class BarrierCertificate(ABC):
     def __init__(
         self,
-        barrier_gain: float = 100,
-        magnitude_limit: float = 0.2,
-        obstacle_gain: float = 10,
-        obstacles: list[Obstacle] = []
+        barrier_gain = 1,
+        linear_velocity_limit = 0.1,
+        angular_velocity_limit = np.pi,
+        obstacle_gain = 1,
+        obstacles = []
     ):
         """
         Initialize a new barrier certificate
@@ -49,12 +47,13 @@ class BarrierCertificate(ABC):
         :type magnitude_limit: float
         """
         self.barrier_gain = barrier_gain
-        self.magnitude_limit = magnitude_limit
+        self.linear_velocity_limit = linear_velocity_limit
+        self.angular_velocity_limit = angular_velocity_limit
         self.obstacle_gain = obstacle_gain
         self.obstacles = obstacles
 
     @abstractmethod
-    def name(self) -> str:
+    def name(self):
         """
         Return the name of the barrier
         
@@ -65,19 +64,19 @@ class BarrierCertificate(ABC):
         ...
 
     @abstractmethod
-    def current_barrier_weight(self) -> list[float]:
+    def current_barrier_weight(self):
         ...
 
     @abstractmethod
-    def current_shape(self) -> int:
+    def current_shape(self):
         ...
 
     @abstractmethod
-    def target_shape(self) -> int:
+    def target_shape(self):
         ...
 
     @abstractmethod
-    def h(self, x1: np.ndarray, x2: np.ndarray) -> float:
+    def h(self, x1, x2):
         """
         Calculate the h-value for the gradient given a robot and obstacle position
         
@@ -92,7 +91,7 @@ class BarrierCertificate(ABC):
         ...
 
     @abstractmethod
-    def dh(self, x1: np.ndarray, x2: np.ndarray) -> np.ndarray:
+    def dh(self, x1, x2):
         """
         Calculate the gradient of h for a given robot and obstacle position
         
@@ -106,7 +105,7 @@ class BarrierCertificate(ABC):
         """
         ...
 
-    def apply(self, dxi: np.ndarray, x: np.ndarray) -> tuple[np.ndarray, float]:
+    def apply(self, dxi, x, thetas):
         """
         Docstring for apply
         
@@ -115,12 +114,15 @@ class BarrierCertificate(ABC):
         :type x: np.ndarray
         :param dxi: Description
         :type dxi: np.ndarray
+        :param thetas: The angular rotation of the robots
+        :type thetas: np.ndarray
         :return: The updated command velocity for each robot and the minimum h-value
         :rtype: tuple[ndarray[_AnyShape, dtype[Any]], float]
         """
+        negative_idxs = set()
         dxi = np.copy(dxi)
         N = dxi.shape[1]
-        num_constraints = int(comb(N, 2)) + N * len(self.obstacles)
+        num_constraints = int(comb(N, 2)) + N*len(self.obstacles) + 4*N
         A = np.zeros((num_constraints, 2*N))
         b = np.zeros(num_constraints)
         H = sparse(matrix(2*np.eye(2*N)))
@@ -143,6 +145,10 @@ class BarrierCertificate(ABC):
                 if h < h_min:
                     h_min = h
 
+                if h < 0:
+                    negative_idxs.add(i)
+                    negative_idxs.add(j)
+
         # Calculate Obstacle Constraints
         for i in range(N):
             for obstacle in self.obstacles:
@@ -153,31 +159,61 @@ class BarrierCertificate(ABC):
                 A[count, 2*i+1] = -(2 * error[1] / np.power(obstacle.radius, 2))
                 b[count] = self.obstacle_gain * np.power(h, 3)
                 count += 1
-        
-        norms = np.linalg.norm(dxi, 2, 0)
-        idxs_to_normalize = (norms > self.magnitude_limit)
-        dxi[:, idxs_to_normalize] *= self.magnitude_limit / norms[idxs_to_normalize]
+
+        # Apply Velocity Constraints
+        for i in range(N):
+            cs = np.cos(thetas[i])
+            ss = np.sin(thetas[i])
+
+            # v <= 0.1
+            A[count, 2*i] = cs
+            A[count, 2*i+1] = ss
+            b[count] = self.linear_velocity_limit
+            count += 1
+
+            # -v <= 0.1
+            A[count, 2*i] = -cs
+            A[count, 2*i+1] = -ss
+            b[count] = self.linear_velocity_limit
+            count += 1
+
+            # w <= pi
+            A[count, 2*i] = -1 / 0.05 * ss
+            A[count, 2*i+1] = 1 / 0.05 * cs
+            b[count] = self.angular_velocity_limit
+            count += 1
+
+            # -w <= -pi
+            A[count, 2*i] = 1 / 0.05 * ss
+            A[count, 2*i+1] = -1 / 0.05 * cs
+            b[count] = self.angular_velocity_limit
+            count += 1
 
         f = -2 * np.reshape(dxi, 2*N, order="F")
-        result = qp(H, matrix(f), matrix(A), matrix(b))["x"]
+        try:
+            result = qp(H, matrix(f), matrix(A), matrix(b))["x"]
+        except:
+            print("Failed to compute barrier")
+            result = dxi
 
         u_star = np.reshape(result, (2, -1), order="F")
-        return u_star, h_min
+        return u_star, h_min, negative_idxs
 
 class SICircularBarrierCertificate(BarrierCertificate):
     def __init__(
         self,
-        barrier_gain: float = 100,
-        safety_radius: float = 0.17,
-        magnitude_limit: float = 0.2,
-        obstacle_gain: float = 10,
-        obstacles: list[Obstacle] = []
+        barrier_gain = 1,
+        safety_radius = 0.175,
+        linear_velocity_limit = 0.1,
+        angular_velocity_limit = np.pi,
+        obstacle_gain = 1,
+        obstacles = []
     ):
-        super().__init__(barrier_gain, magnitude_limit, obstacle_gain, obstacles)
+        super().__init__(barrier_gain, linear_velocity_limit, angular_velocity_limit, obstacle_gain, obstacles)
         self.safety_radius = safety_radius
 
-    def name(self) -> str:
-        return "circular"
+    def name(self):
+        return "circle"
     
     def current_barrier_weight(self):
         return [1.0, 0.0, 0.0, 0.0]
@@ -188,11 +224,11 @@ class SICircularBarrierCertificate(BarrierCertificate):
     def target_shape(self):
         return 1
 
-    def h(self, x1: np.ndarray, x2: np.ndarray) -> float:
+    def h(self, x1, x2):
         error = x1 - x2
         return np.power(error[0], 2) / np.power(self.safety_radius, 2) + np.power(error[1], 2) / np.power(self.safety_radius, 2) - 1
 
-    def dh(self, x1: np.ndarray, x2: np.ndarray) -> np.ndarray:
+    def dh(self, x1, x2):
         error = x1 - x2
         return np.array([
             2 * error[0] / np.power(self.safety_radius, 2),
@@ -202,34 +238,55 @@ class SICircularBarrierCertificate(BarrierCertificate):
 class SIEllipticalBarrierCertificate(BarrierCertificate):
     def __init__(
         self,
-        barrier_gain: float = 100,
-        safety_a: float = 0.17,
-        safety_b: float = 0.12,
-        magnitude_limit: float = 0.2,
-        obstacle_gain: float = 10,
-        obstacles: list[Obstacle] = []
+        barrier_gain = 1,
+        safety_a = 0.2,
+        safety_b = 0.15,
+        linear_velocity_limit=0.1,
+        angular_velocity_limit=np.pi,
+        obstacle_gain = 1,
+        obstacles = []
     ):
-        super().__init__(barrier_gain, magnitude_limit, obstacle_gain, obstacles)
+        super().__init__(barrier_gain, linear_velocity_limit, angular_velocity_limit, obstacle_gain, obstacles)
         self.safety_a = safety_a
         self.safety_b = safety_b
 
-    def name(self) -> str:
-        return "elliptical"
+    def name(self):
+        if self.safety_a > self.safety_b:
+            return "horizontal-ellipse"
+        elif self.safety_a < self.safety_b:
+            return "vertical-ellipse"
+        else:
+            return "circle"
     
     def current_barrier_weight(self):
-        return [0.0, 1.0, 0.0, 0.0]
+        if self.safety_a > self.safety_b:
+            return [0.0, 1.0, 0.0, 0.0]
+        elif self.safety_a < self.safety_b:
+            return [0.0, 0.0, 1.0, 0.0]
+        else:
+            return [1.0, 0.0, 0.0, 0.0]
     
     def current_shape(self):
-        return 2
+        if self.safety_a > self.safety_b:
+            return 2
+        elif self.safety_a < self.safety_b:
+            return 3
+        else:
+            return 1
     
     def target_shape(self):
-        return 2
+        if self.safety_a > self.safety_b:
+            return 2
+        elif self.safety_a < self.safety_b:
+            return 3
+        else:
+            return 1
 
-    def h(self, x1: np.ndarray, x2: np.ndarray) -> float:
+    def h(self, x1, x2):
         error = x1 - x2
         return np.power(error[0], 2) / np.power(self.safety_a, 2) + np.power(error[1], 2) / np.power(self.safety_b, 2) - 1
     
-    def dh(self, x1: np.ndarray, x2: np.ndarray) -> np.ndarray:
+    def dh(self, x1, x2):
         error = x1 - x2
         return np.array([
             2 * error[0] / np.power(self.safety_a, 2),
@@ -239,16 +296,17 @@ class SIEllipticalBarrierCertificate(BarrierCertificate):
 class SISquareBarrierCertificate(BarrierCertificate):
     def __init__(
         self,
-        barrier_gain: float = 100,
-        safety_width: float = 0.2,
-        magnitude_limit: float = 0.2,
-        obstacle_gain: float = 10,
-        obstacles: list[Obstacle] = []
+        barrier_gain = 1,
+        safety_width = 0.175,
+        linear_velocity_limit=0.1,
+        angular_velocity_limit=np.pi,
+        obstacle_gain = 1,
+        obstacles = []
     ):
-        super().__init__(barrier_gain, magnitude_limit, obstacle_gain, obstacles)
+        super().__init__(barrier_gain, linear_velocity_limit, angular_velocity_limit, obstacle_gain, obstacles)
         self.safety_width = safety_width
 
-    def name(self) -> str:
+    def name(self):
         return "square"
     
     def current_barrier_weight(self):
@@ -260,55 +318,41 @@ class SISquareBarrierCertificate(BarrierCertificate):
     def target_shape(self):
         return 4
 
-    def __calculate_ex_ey(self, x1: np.ndarray, x2: np.ndarray) -> tuple[float, int, float, int]:
-        ex = x1[0] - x2[0]
-        x_sign = 1
-        if ex < 0:
-            x_sign = -1
-        ex = np.abs(ex)
-
-        ey = x1[1] - x2[1]
-        y_sign = 1
-        if ey < 0:
-            y_sign = -1
-        ey = np.abs(ey)
-
-        return ex, x_sign, ey, y_sign
-
-    def h(self, x1: np.ndarray, x2: np.ndarray) -> float:
-        ex, _, ey, _ = self.__calculate_ex_ey(x1, x2)
-        return np.power(ex, 3) + np.power(ey, 3) - np.power(self.safety_width / 2, 3)
+    def h(self, x1, x2):
+        error = x1 - x2
+        return np.abs(error[0] ** 3) / (self.safety_width ** 3) + np.abs(error[1] ** 3) / (self.safety_width ** 3) - 1
     
-    def dh(self, x1: np.ndarray, x2: np.ndarray) -> np.ndarray:
-        ex, x_sign, ey, y_sign = self.__calculate_ex_ey(x1, x2)
+    def dh(self, x1, x2):
+        error = x1 - x2
         return np.array([
-            3 * np.power(ex, 2) * x_sign,
-            3 * np.power(ey, 2) * y_sign
+            3 * error[0] * np.abs(error[0]) / (self.safety_width ** 3),
+            3 * error[1] * np.abs(error[1]) / (self.safety_width ** 3)
         ])
     
 class SITriangleBarrierCertificate(BarrierCertificate):
     def __init__(
         self,
-        barrier_gain: float = 100,
-        magnitude_limit: float = 0.2,
-        obstacle_gain: float = 10,
-        obstacles: list[Obstacle] = []
+        barrier_gain = 1,
+        linear_velocity_limit=0.1,
+        angular_velocity_limit=np.pi,
+        obstacle_gain = 1,
+        obstacles = []
     ):
-        super().__init__(barrier_gain, magnitude_limit, obstacle_gain, obstacles)
+        super().__init__(barrier_gain, linear_velocity_limit, angular_velocity_limit, obstacle_gain, obstacles)
 
-    def name(self) -> str:
+    def name(self):
         return "triangle"
     
     def current_barrier_weight(self):
-        return [0.0, 0.0, 1.0, 0.0]
+        return [0.0, 0.0, 0.0, 0.0, 1.0]
     
     def current_shape(self):
-        return 3
+        return 5
     
     def target_shape(self):
-        return 3
+        return 5
 
-    def __calculate_exponentials(self, x1: np.ndarray, x2: np.ndarray) -> tuple[float, float, float]:
+    def __calculate_exponentials(self, x1, x2):
         error = x1 - x2
 
         # The three exponentials
@@ -318,11 +362,11 @@ class SITriangleBarrierCertificate(BarrierCertificate):
 
         return e1, e2, e3
     
-    def h(self, x1: np.ndarray, x2: np.ndarray) -> float:
+    def h(self, x1, x2):
         e1, e2, e3 = self.__calculate_exponentials(x1, x2)
         return 3/5 * np.log(e1 + e2 + e3) - 1
     
-    def dh(self, x1: np.ndarray, x2: np.ndarray) -> np.ndarray:
+    def dh(self, x1, x2):
         e1, e2, e3 = self.__calculate_exponentials(x1, x2)
         denom = e1 + e2 + e3
         return np.array([
@@ -330,29 +374,29 @@ class SITriangleBarrierCertificate(BarrierCertificate):
             3 * (4*np.sqrt(3)*e1 - 4*np.sqrt(3)*e3) / (5 * denom)
         ])
     
-class SIDeltaAlternatingBarrierCertificate(BarrierCertificate):
+class SIDeltaBarrierCertificate(BarrierCertificate):
     def __init__(
         self,
-        barrier_gain: float = 100,
-        magnitude_limit: float = 0.2,
-        barriers: list[BarrierCertificate] = [],
-        dt: float = 1 / 30,
-        delta_func: Callable[[float], float] = lambda t: (1 - np.cos(np.pi * t / 2)) / 2 if t <= 2 else 1,
-        delta_der: Callable[[float], float] = lambda t: np.pi / 4 * np.sin(np.pi * t / 2) if t <= 2 else 0,
-        obstacle_gain: float = 10,
-        obstacles: list[Obstacle] = []
+        barrier_gain = 1,
+        linear_velocity_limit=0.1,
+        angular_velocity_limit=np.pi,
+        barriers = [],
+        delta_func = lambda t: (1 - np.cos(np.pi * t / 2)) / 2 if t <= 2 else 1,
+        delta_der = lambda t: np.pi / 4 * np.sin(np.pi * t / 2) if t <= 2 else 0,
+        obstacle_gain = 1,
+        obstacles = []
     ):
-        super().__init__(barrier_gain, magnitude_limit, obstacle_gain, obstacles)
+        super().__init__(barrier_gain, linear_velocity_limit, angular_velocity_limit, obstacle_gain, obstacles)
         self.barriers = barriers
         self.delta_func = delta_func
         self.delta_der = delta_der
         self.target_barrier_idx = 0
         self.current_barrier_idx = 0
-        self.current_elapsed_time = 2
+        self.current_elapsed_time = 0
         self.last_update_time = time.time()
 
-    def name(self) -> str:
-        return f"delta({'-'.join([barrier.name() for barrier in self.barriers])})"
+    def name(self):
+        return f"delta({','.join([barrier.name() for barrier in self.barriers])})"
     
     def current_shape(self):
         return self.barriers[self.current_barrier_idx].current_shape()
@@ -367,19 +411,23 @@ class SIDeltaAlternatingBarrierCertificate(BarrierCertificate):
         weights += delta * np.array(self.barriers[self.target_barrier_idx].current_barrier_weight())
         return weights
 
-    def h(self, x1: np.ndarray, x2: np.ndarray) -> float:
+    def h(self, x1, x2):
         delta = self.delta_func(self.current_elapsed_time)
         return self.h(x1, x2, delta)
 
-    def h(self, x1: np.ndarray, x2: np.ndarray, delta: float) -> float:
+    def h(self, x1, x2, delta):
         return (1 - delta) * self.barriers[self.current_barrier_idx].h(x1, x2) \
             + delta * self.barriers[self.target_barrier_idx].h(x1, x2)
+    
+    def diff(self, x1, x2):
+        return self.barriers[self.target_barrier_idx].h(x1, x2) - \
+            self.barriers[self.current_barrier_idx].h(x1, x2)
 
-    def dh(self, x1: np.ndarray, x2: np.ndarray) -> np.ndarray:
+    def dh(self, x1, x2):
         delta = self.delta_func(self.current_elapsed_time)
         return self.dh(x1, x2, delta)
 
-    def dh(self, x1: np.ndarray, x2: np.ndarray, delta: float) -> np.ndarray:
+    def dh(self, x1, x2, delta):
         dh1 = self.barriers[self.current_barrier_idx].dh(x1, x2)
         dh2 = self.barriers[self.target_barrier_idx].dh(x1, x2)
         return np.array([
@@ -387,7 +435,7 @@ class SIDeltaAlternatingBarrierCertificate(BarrierCertificate):
             (1 - delta) * dh1[1] + delta * dh2[1]
         ])
     
-    def apply(self, dxi: np.ndarray, x: np.ndarray) -> tuple[np.ndarray, float]:
+    def apply(self, dxi, x, thetas):
         self.current_elapsed_time += time.time() - self.last_update_time
         self.last_update_time = time.time()
         dxi = np.copy(dxi)
@@ -396,16 +444,34 @@ class SIDeltaAlternatingBarrierCertificate(BarrierCertificate):
 
         if delta >= 1:
             self.current_barrier_idx = self.target_barrier_idx
-            self.target_barrier_idx = (self.current_barrier_idx + 1) % len(self.barriers)
-            self.current_elapsed_time = 0
+            # Compute barrier-updated velocities and minimum h-value for each barrier
+            u_stars, h_mins = [], []
+            for barrier in self.barriers:
+                u_star, h_min, _ = barrier.apply(dxi, x, thetas)
+                u_star = np.sum(np.linalg.norm(u_star, axis=0)) / dxi.shape[1]
+                u_stars.append(u_star)
+                h_mins.append(h_min)
+
+            # Find all barriers yielding a positive h-value
+            s = [i for i in range(len(self.barriers)) if h_mins[i] >= 0]
+            desired_barrier_idx: int
+            if len(s) == 0:
+                desired_barrier_idx = self.current_barrier_idx
+            else:
+                desired_barrier_idx = s[np.argmax(np.array(u_stars)[s])]
+
+            if self.current_barrier_idx != desired_barrier_idx:
+                self.target_barrier_idx = desired_barrier_idx
+                self.current_elapsed_time = 0
 
         # Compute h_ij(x, t)
         N = dxi.shape[1]
-        num_constraints = int(comb(N, 2)) + N * len(self.obstacles)
+        num_constraints = int(comb(N, 2)) + N*len(self.obstacles) + 4*N
         A = np.zeros((num_constraints, 2*N))
         b = np.zeros(num_constraints)
         H = sparse(matrix(2*np.eye(2*N)))
         h_min = 1e99
+        negative_idxs = set()
 
         count = 0
         # Calculate Robot Constraints
@@ -418,55 +484,90 @@ class SIDeltaAlternatingBarrierCertificate(BarrierCertificate):
                 A[count, 2*i+1] = -dh[1]
                 A[count, 2*j] = dh[0]
                 A[count, 2*j+1] = dh[1]
-                b[count] = delta_dot + self.barrier_gain * np.power(h, 3)
+                b[count] = delta_dot * self.diff(x[:, i], x[:, j]) + self.barrier_gain * np.power(h, 3)
                 count += 1
 
                 if h < h_min:
                     h_min = h
 
+                if h < 0:
+                    negative_idxs.add(i)
+                    negative_idxs.add(j)
+
         # Calculate Obstacle Constraints
         for i in range(N):
             for obstacle in self.obstacles:
                 error = x[:, i] - obstacle.position
-                h = np.power(error[0], 2) + np.power(error[1], 2) - np.power(obstacle.radius, 2)
+                h = np.power(error[0], 2) / np.power(obstacle.radius, 2) + np.power(error[1], 2) / np.power(obstacle.radius, 2) - 1
 
-                A[count, 2*i] = -2 * error[0]
-                A[count, 2*i+1] = -2 * error[1]
+                A[count, 2*i] = -(2 * error[0] / np.power(obstacle.radius, 2))
+                A[count, 2*i+1] = -(2 * error[1] / np.power(obstacle.radius, 2))
                 b[count] = self.obstacle_gain * np.power(h, 3)
                 count += 1
 
-        norms = np.linalg.norm(dxi, 2, 0)
-        idxs_to_normalize = (norms > self.magnitude_limit)
-        dxi[:, idxs_to_normalize] *= self.magnitude_limit / norms[idxs_to_normalize]
+        # Apply Velocity Constraints
+        for i in range(N):
+            cs = np.cos(thetas[i])
+            ss = np.sin(thetas[i])
+
+            # v <= 0.1
+            A[count, 2*i] = cs
+            A[count, 2*i+1] = ss
+            b[count] = self.linear_velocity_limit
+            count += 1
+
+            # -v <= 0.1
+            A[count, 2*i] = -cs
+            A[count, 2*i+1] = -ss
+            b[count] = self.linear_velocity_limit
+            count += 1
+
+            # w <= pi
+            A[count, 2*i] = -1 / 0.05 * ss
+            A[count, 2*i+1] = 1 / 0.05 * cs
+            b[count] = self.angular_velocity_limit
+            count += 1
+
+            # -w <= -pi
+            A[count, 2*i] = 1 / 0.05 * ss
+            A[count, 2*i+1] = -1 / 0.05 * cs
+            b[count] = self.angular_velocity_limit
+            count += 1
 
         f = -2 * np.reshape(dxi, 2*N, order="F")
-        result = qp(H, matrix(f), matrix(A), matrix(b))["x"]
+        try:
+            result = qp(H, matrix(f), matrix(A), matrix(b))["x"]
+        except:
+            print("Failed to compute barrier")
+            result = dxi
 
-        return np.reshape(result, (2, -1), order="F"), h_min
+        u_star = np.reshape(result, (2, -1), order="F")
+        return u_star, h_min, negative_idxs
     
-class SIDeltaBarrierCertificate(BarrierCertificate):
+class SIDeltaSimBarrierCertificate(BarrierCertificate):
     def __init__(
         self,
-        barrier_gain: float = 100,
-        magnitude_limit: float = 0.2,
-        barriers: list[BarrierCertificate] = [],
-        dt: float = 1 / 30,
-        delta_func: Callable[[float], float] = lambda t: (1 - np.cos(np.pi * t / 2)) / 2 if t <= 2 else 1,
-        delta_der: Callable[[float], float] = lambda t: np.pi / 4 * np.sin(np.pi * t / 2) if t <= 2 else 0,
-        obstacle_gain: float = 10,
-        obstacles: list[Obstacle] = []
+        barrier_gain = 1,
+        linear_velocity_limit = 0.1,
+        angular_velocity_limit = np.pi,
+        barriers = [],
+        dt = 1 / 30,
+        delta_func = lambda t: (1 - np.cos(np.pi * t / 2)) / 2 if t <= 2 else 1,
+        delta_der = lambda t: np.pi / 4 * np.sin(np.pi * t / 2) if t <= 2 else 0,
+        obstacle_gain = 10,
+        obstacles = []
     ):
-        super().__init__(barrier_gain, magnitude_limit, obstacle_gain, obstacles)
+        super().__init__(barrier_gain, linear_velocity_limit, angular_velocity_limit, obstacle_gain, obstacles)
         self.barriers = barriers
         self.delta_func = delta_func
         self.delta_der = delta_der
         self.target_barrier_idx = 0
         self.current_barrier_idx = 0
         self.current_elapsed_time = 2
-        self.last_update_time = time.time()
+        self.dt = dt
 
-    def name(self) -> str:
-        return f"delta({'-'.join([barrier.name() for barrier in self.barriers])})"
+    def name(self):
+        return f"delta({','.join([barrier.name() for barrier in self.barriers])})"
     
     def current_shape(self):
         return self.barriers[self.current_barrier_idx].current_shape()
@@ -481,19 +582,19 @@ class SIDeltaBarrierCertificate(BarrierCertificate):
         weights += delta * np.array(self.barriers[self.target_barrier_idx].current_barrier_weight())
         return weights
 
-    def h(self, x1: np.ndarray, x2: np.ndarray) -> float:
+    def h(self, x1, x2):
         delta = self.delta_func(self.current_elapsed_time)
         return self.h(x1, x2, delta)
 
-    def h(self, x1: np.ndarray, x2: np.ndarray, delta: float) -> float:
+    def h(self, x1, x2, delta):
         return (1 - delta) * self.barriers[self.current_barrier_idx].h(x1, x2) \
             + delta * self.barriers[self.target_barrier_idx].h(x1, x2)
 
-    def dh(self, x1: np.ndarray, x2: np.ndarray) -> np.ndarray:
+    def dh(self, x1, x2):
         delta = self.delta_func(self.current_elapsed_time)
         return self.dh(x1, x2, delta)
 
-    def dh(self, x1: np.ndarray, x2: np.ndarray, delta: float) -> np.ndarray:
+    def dh(self, x1, x2, delta):
         dh1 = self.barriers[self.current_barrier_idx].dh(x1, x2)
         dh2 = self.barriers[self.target_barrier_idx].dh(x1, x2)
         return np.array([
@@ -501,9 +602,8 @@ class SIDeltaBarrierCertificate(BarrierCertificate):
             (1 - delta) * dh1[1] + delta * dh2[1]
         ])
     
-    def apply(self, dxi: np.ndarray, x: np.ndarray) -> tuple[np.ndarray, float]:
-        self.current_elapsed_time += time.time() - self.last_update_time
-        self.last_update_time = time.time()
+    def apply(self, dxi, x, thetas):
+        self.current_elapsed_time += self.dt
         dxi = np.copy(dxi)
         delta = self.delta_func(self.current_elapsed_time)
         delta_dot = self.delta_der(self.current_elapsed_time)
@@ -519,13 +619,12 @@ class SIDeltaBarrierCertificate(BarrierCertificate):
                 h_mins.append(h_min)
             
             # Find all barriers yielding a positive h-value
-
             s = [i for i in range(len(self.barriers)) if h_mins[i] >= 0]
             desired_barrier_idx: int
             if len(s) == 0:
                 desired_barrier_idx = self.current_barrier_idx
             else:
-                desired_barrier_idx = np.argmax(np.array(u_stars)[s])
+                desired_barrier_idx = s[np.argmax(np.array(u_stars)[s])]
 
             if self.current_barrier_idx != desired_barrier_idx:
                 self.target_barrier_idx = desired_barrier_idx
@@ -567,6 +666,35 @@ class SIDeltaBarrierCertificate(BarrierCertificate):
                 b[count] = self.obstacle_gain * np.power(h, 3)
                 count += 1
 
+        # Apply Velocity Constraints
+        for i in range(N):
+            cs = np.cos(thetas[i])
+            ss = np.sin(thetas[i])
+
+            # v <= 0.1
+            A[count, 2*i] = cs
+            A[count, 2*i+1] = ss
+            b[count] = self.linear_velocity_limit
+            count += 1
+
+            # -v <= 0.1
+            A[count, 2*i] = -cs
+            A[count, 2*i+1] = -ss
+            b[count] = self.linear_velocity_limit
+            count += 1
+
+            # w <= pi
+            A[count, 2*i] = -1 / 0.05 * ss
+            A[count, 2*i+1] = 1 / 0.05 * cs
+            b[count] = self.angular_velocity_limit
+            count += 1
+
+            # -w <= -pi
+            A[count, 2*i] = 1 / 0.05 * ss
+            A[count, 2*i+1] = -1 / 0.05 * cs
+            b[count] = self.angular_velocity_limit
+            count += 1  
+
         norms = np.linalg.norm(dxi, 2, 0)
         idxs_to_normalize = (norms > self.magnitude_limit)
         dxi[:, idxs_to_normalize] *= self.magnitude_limit / norms[idxs_to_normalize]
@@ -576,335 +704,6 @@ class SIDeltaBarrierCertificate(BarrierCertificate):
 
         return np.reshape(result, (2, -1), order="F"), h_min
 
-
-def create_si_circular_barrier_certificate(
-    barrier_gain: float = 100,
-    safety_radius: float = 0.17,
-    magnitude_limit: float = 0.2,
-) -> Callable[[np.ndarray, np.ndarray], tuple[np.ndarray, float]]:
-    # Check input types
-    assert isinstance(barrier_gain, (int, float)), \
-        f"In create_si_circular_barrier_certificate, the barrier gain (barrier_gain) must be an integer or float. Received {type(barrier_gain).__name__}"
-    assert isinstance(safety_radius, (int, float)), \
-        f"In create_si_circular_barrier_certificate, the safe distance between robots (safety_radius) must be an integer or float. Received {type(safety_radius).__name__}"
-    assert isinstance(magnitude_limit, (int, float)), \
-        f"In create_si_circular_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be an integer or float. Received {type(magnitude_limit).__name__}"
-    
-    # Check use input ranges/sizes
-    assert barrier_gain > 0, \
-        f"In create_si_circular_barrier_certificate, the barrier gain (barrier_gain) must be positive. Received {barrier_gain}"
-    assert safety_radius >= 0.12, \
-        f"In create_si_circular_barrier_certificate, the safe distance between robots (safety_radius) must be greatr than or equal to the diameter of the robot (0.12m) plus the distance to the look ahead point used in the diffeomorphism if that is being used. Received {safety_radius}"
-    assert magnitude_limit > 0, \
-        f"In create_si_circular_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be positive. Received {magnitude_limit}"
-    assert magnitude_limit <= 0.2, \
-        f"In create_si_circular_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be less than the max speed of the robot (0.2m/s). Received {magnitude_limit}"
-
-    def f(dxi: np.ndarray, x: np.ndarray) -> tuple[np.ndarray, float]:
-        # Check user input types
-        assert isinstance(dxi, np.ndarray), \
-            f"In the function created by create_si_circular_barrier_certificate, the single-integrator robot velocity command (dxi) must be a numpy array. Received {type(dxi).__name__}"
-        assert isinstance(x, np.ndarray), \
-            f"In the function created by create_si_circular_barrier_certificate, the robto states (x) must be a numpy array. Received {type(x).__name__}"
-        
-        # Check input ranges / sizes
-        assert x.shape[0] == 2, \
-            f"In the function created by create_si_circular_barrier_certificate, the dimension of the single integrator robot states (x) must be 2 ([x;y]). Received dimension {x.shape[0]}"
-        assert dxi.shape[0] == 2, \
-            f"In the function created by create_si_circular_barrier_certificate, the dimension of the robot single integrator velocity command (dxi) must be 2 ([x_dot;y_dot]). Received dimension {dxi.shape[0]}"
-        assert x.shape[1] == dxi.shape[1], \
-            f"In the function created by create_si_circular_barrier_certificate, the number of robot states (x) must be equal to the number of robot single integrator velocity commands (dxi). Received a current robot pose input array (x) of size {x.shape[0]} x {x.shape[1]} and a single_integrator velocity array (dxi) of size {dxi.shape[0]} x {dxi.shape[1]}"
-        
-        N = dxi.shape[1]
-        num_constraints = int(comb(N, 2))
-        A = np.zeros((num_constraints, 2*N))
-        b = np.zeros(num_constraints)
-        H = sparse(matrix(2*np.identity(2*N)))
-        h_min = 1e99
-
-        count = 0
-        for i in range(N-1):
-            for j in range(i+1, N):
-                dx = x[0, i] - x[0, j]
-                dy = x[1, i] - x[1, j]
-
-                h = np.power(dx, 2) / np.power(safety_radius, 2) + np.power(dy, 2) / np.power(safety_radius, 2) - 1
-                L_g1 = 2 * dx / np.power(safety_radius, 2)
-                L_g2 = 2 * dy / np.power(safety_radius, 2)
-                L_g3 = -L_g1
-                L_g4 = -L_g2
-
-                A[count, 2*i] = -L_g1
-                A[count, 2*i+1] = -L_g2
-                A[count, 2*j] = -L_g3
-                A[count, 2*j+1] = -L_g4
-                b[count] = barrier_gain * np.power(h, 3)
-                count += 1
-
-                if h < h_min:
-                    h_min = h
-
-        norms = np.linalg.norm(dxi, 2, 0)
-        idxs_to_normalize = (norms > magnitude_limit)
-        dxi[:, idxs_to_normalize] *= magnitude_limit / norms[idxs_to_normalize]
-
-        f = -2 * np.reshape(dxi, 2*N, order="F")
-        result = qp(H, matrix(f), matrix(A), matrix(b))["x"]
-
-        return np.reshape(result, (2, -1), order="F"), h_min
-
-    return f
-
-def create_si_elliptical_barrier_certificate(
-    barrier_gain: float = 100,
-    safety_a: float = 0.17,
-    safety_b: float = 0.12,
-    magnitude_limit: float = 0.2
-) -> Callable[[np.ndarray, np.ndarray], tuple[np.ndarray, float]]:
-    # Check input types
-    assert isinstance(barrier_gain, (int, float)), \
-        f"In create_si_elliptical_barrier_certificate, the barrier gain (barrier_gain) must be an integer or float. Received {type(barrier_gain).__name__}"
-    assert isinstance(safety_a, (int, float)), \
-        f"In create_si_elliptical_barrier_certificate, the safe distance of the a axis (safety_a) must be an integer or float. Received {type(safety_a).__name__}"
-    assert isinstance(safety_b, (int, float)), \
-        f"In create_si_elliptical_barrier_certificate, the safe distance of the b axis (safety_b) must be an integer or float. Received {type(safety_a).__name__}"
-    assert isinstance(magnitude_limit, (int, float)), \
-        f"In create_si_elliptical_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be an integer or float. Received {type(magnitude_limit).__name__}"
-    
-    # Check use input ranges/sizes
-    assert barrier_gain > 0, \
-        f"In create_si_elliptical_barrier_certificate, the barrier gain (barrier_gain) must be positive. Received {barrier_gain}"
-    assert safety_a >= 0.12, \
-        f"In create_si_elliptical_barrier_certificate, the safe distance of the a axis (safety_a) must be greatr than or equal to the diameter of the robot (0.12m) plus the distance to the look ahead point used in the diffeomorphism if that is being used. Received {safety_a}"
-    assert safety_b >= 0.12, \
-        f"In create_si_elliptical_barrier_certificate, the safe distance of the b axis (safety_b) must be greatr than or equal to the diameter of the robot (0.12m) plus the distance to the look ahead point used in the diffeomorphism if that is being used. Received {safety_b}"
-    assert magnitude_limit > 0, \
-        f"In create_si_elliptical_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be positive. Received {magnitude_limit}"
-    assert magnitude_limit <= 0.2, \
-        f"In create_si_elliptical_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be less than the max speed of the robot (0.2m/s). Received {magnitude_limit}"
-    
-    def f(dxi: np.ndarray, x: np.ndarray) -> tuple[np.ndarray, float]:
-         # Check user input types
-        assert isinstance(dxi, np.ndarray), \
-            f"In the function created by create_si_elliptical_barrier_certificate, the single-integrator robot velocity command (dxi) must be a numpy array. Received {type(dxi).__name__}"
-        assert isinstance(x, np.ndarray), \
-            f"In the function created by create_si_elliptical_barrier_certificate, the robto states (x) must be a numpy array. Received {type(x).__name__}"
-        
-        # Check input ranges / sizes
-        assert x.shape[0] == 2, \
-            f"In the function created by create_si_elliptical_barrier_certificate, the dimension of the single integrator robot states (x) must be 2 ([x;y]). Received dimension {x.shape[0]}"
-        assert dxi.shape[0] == 2, \
-            f"In the function created by create_si_elliptical_barrier_certificate, the dimension of the robot single integrator velocity command (dxi) must be 2 ([x_dot;y_dot]). Received dimension {dxi.shape[0]}"
-        assert x.shape[1] == dxi.shape[1], \
-            f"In the function created by create_si_elliptical_barrier_certificate, the number of robot states (x) must be equal to the number of robot single integrator velocity commands (dxi). Received a current robot pose input array (x) of size {x.shape[0]} x {x.shape[1]} and a single_integrator velocity array (dxi) of size {dxi.shape[0]} x {dxi.shape[1]}"
-        
-        N = dxi.shape[1]
-        num_constraints = int(comb(N, 2))
-        A = np.zeros((num_constraints, 2*N))
-        b = np.zeros(num_constraints)
-        H = sparse(matrix(2 * np.identity(2*N)))
-        h_min = 1e99
-
-        count = 0
-        for i in range(N-1):
-            for j in range(i+1, N):
-                dx = x[0, i] - x[0, j]
-                dy = x[1, i] - x[1, j]
-
-                h = np.power(dx, 2) / np.power(safety_a, 2) + np.power(dy, 2) / np.power(safety_b, 2) - 1
-                L_g1 = 2 * dx / np.power(safety_a, 2)
-                L_g2 = 2 * dy / np.power(safety_b, 2)
-                L_g3 = -L_g1
-                L_g4 = -L_g2
-
-                A[count, 2*i] = -L_g1
-                A[count, 2*i+1] = -L_g2
-                A[count, 2*j] = -L_g3
-                A[count, 2*j+1] = -L_g4
-                b[count] = barrier_gain * np.power(h, 3)
-                count += 1
-
-                if h < h_min:
-                    h_min = h
-        
-        norms = np.linalg.norm(dxi, 2, 0)
-        idxs_to_normalize = (norms > magnitude_limit)
-        dxi[:, idxs_to_normalize] *= magnitude_limit / norms[idxs_to_normalize]
-
-        f = -2 * np.reshape(dxi, 2*N, order="F")
-        result = qp(H, matrix(f), matrix(A), matrix(b))["x"]
-
-        return np.reshape(result, (2, -1), order="F"), h_min
-
-    return f
-
-def create_si_square_barrier_certificate(
-    barrier_gain: float = 100,
-    safety_width: float = 0.2,
-    magnitude_limit: float = 0.2
-) -> Callable[[np.ndarray, np.ndarray], tuple[np.ndarray, float]]:
-    # Check input types
-    assert isinstance(barrier_gain, (int, float)), \
-        f"In create_si_square_barrier_certificate, the barrier gain (barrier_gain) must be an integer or float. Received {type(barrier_gain).__name__}"
-    assert isinstance(safety_width, (int, float)), \
-        f"In create_si_square_barrier_certificate, the safety width (safety_width) must be an integer or float. Received {type(safety_width).__name__}"
-    assert isinstance(magnitude_limit, (int, float)), \
-        f"In create_si_square_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be an integer or float. Received {type(magnitude_limit).__name__}"
-    
-    # Check use input ranges/sizes
-    assert barrier_gain > 0, \
-        f"In create_si_square_barrier_certificate, the barrier gain (barrier_gain) must be positive. Received {barrier_gain}"
-    assert safety_width >= 0.12, \
-        f"In create_si_square_barrier_certificate, the safety width (safety_width) must be greatr than or equal to the diameter of the robot (0.12m) plus the distance to the look ahead point used in the diffeomorphism if that is being used. Received {safety_width}"
-    assert magnitude_limit > 0, \
-        f"In create_si_square_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be positive. Received {magnitude_limit}"
-    assert magnitude_limit <= 0.2, \
-        f"In create_si_square_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be less than the max speed of the robot (0.2m/s). Received {magnitude_limit}"
-    
-    def f(dxi: np.ndarray, x: np.ndarray) -> tuple[np.ndarray, float]:
-         # Check user input types
-        assert isinstance(dxi, np.ndarray), \
-            f"In the function created by create_si_square_barrier_certificate, the single-integrator robot velocity command (dxi) must be a numpy array. Received {type(dxi).__name__}"
-        assert isinstance(x, np.ndarray), \
-            f"In the function created by create_si_square_barrier_certificate, the robto states (x) must be a numpy array. Received {type(x).__name__}"
-        
-        # Check input ranges / sizes
-        assert x.shape[0] == 2, \
-            f"In the function created by create_si_square_barrier_certificate, the dimension of the single integrator robot states (x) must be 2 ([x;y]). Received dimension {x.shape[0]}"
-        assert dxi.shape[0] == 2, \
-            f"In the function created by create_si_square_barrier_certificate, the dimension of the robot single integrator velocity command (dxi) must be 2 ([x_dot;y_dot]). Received dimension {dxi.shape[0]}"
-        assert x.shape[1] == dxi.shape[1], \
-            f"In the function created by create_si_square_barrier_certificate, the number of robot states (x) must be equal to the number of robot single integrator velocity commands (dxi). Received a current robot pose input array (x) of size {x.shape[0]} x {x.shape[1]} and a single_integrator velocity array (dxi) of size {dxi.shape[0]} x {dxi.shape[1]}"
-        
-        N = dxi.shape[1]
-        num_constraints = int(comb(N, 2))
-        A = np.zeros((num_constraints, 2*N))
-        b = np.zeros(num_constraints)
-        H = sparse(matrix(2*np.identity(2*N)))
-        h_min = 1e99
-
-        count = 0
-        for i in range(N-1):
-            for j in range(i+1, N):
-                dx = x[0, i] - x[0, j]
-                x_sign = 1
-                if dx < 0:
-                    x_sign = -1
-                dx = np.abs(dx)
-
-                dy = x[1, i] - x[1, j]
-                y_sign = 1
-                if dy < 0:
-                    y_sign = -1
-                dy = np.abs(dy)
-
-                h = np.power(dx, 3) + np.power(dy, 3) - np.power(safety_width / 2, 3)
-                L_g1 = 3 * np.power(dx, 2) * x_sign
-                L_g2 = 3 * np.power(dy, 2) * y_sign
-                L_g3 = -L_g1
-                L_g4 = -L_g2
-
-                A[count, 2*i] = -L_g1
-                A[count, 2*i+1] = -L_g2
-                A[count, 2*j] = -L_g3
-                A[count, 2*j+1] = -L_g4
-                b[count] = barrier_gain * np.power(h, 3)
-                count += 1
-
-                if h < h_min:
-                    h_min = h
-
-        norms = np.linalg.norm(dxi, 2, 0)
-        idxs_to_normalize = (norms > magnitude_limit)
-        dxi[:, idxs_to_normalize] *= magnitude_limit / norms[idxs_to_normalize]
-
-        f = -2 * np.reshape(dxi, 2*N, order="F")
-        result = qp(H, matrix(f), matrix(A), matrix(b))["x"]
-
-        return np.reshape(result, (2, -1), order="F"), h_min
-
-    return f
-
-def create_si_triangle_barrier_certificate(
-    barrier_gain: float = 100,
-    magnitude_limit: float = 0.2
-) -> Callable[[np.ndarray, np.ndarray], tuple[np.ndarray, float]]:
-    # Check input types
-    assert isinstance(barrier_gain, (int, float)), \
-        f"In create_si_triangle_barrier_certificate, the barrier gain (barrier_gain) must be an integer or float. Received {type(barrier_gain).__name__}"
-    assert isinstance(magnitude_limit, (int, float)), \
-        f"In create_si_triangle_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be an integer or float. Received {type(magnitude_limit).__name__}"
-    
-    # Check use input ranges/sizes
-    assert barrier_gain > 0, \
-        f"In create_si_triangle_barrier_certificate, the barrier gain (barrier_gain) must be positive. Received {barrier_gain}"
-    assert magnitude_limit > 0, \
-        f"In create_si_triangle_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be positive. Received {magnitude_limit}"
-    assert magnitude_limit <= 0.2, \
-        f"In create_si_triangle_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be less than the max speed of the robot (0.2m/s). Received {magnitude_limit}"
-    
-    def f(dxi: np.ndarray, x: np.ndarray) -> tuple[np.ndarray, float]:
-         # Check user input types
-        assert isinstance(dxi, np.ndarray), \
-            f"In the function created by create_si_triangle_barrier_certificate, the single-integrator robot velocity command (dxi) must be a numpy array. Received {type(dxi).__name__}"
-        assert isinstance(x, np.ndarray), \
-            f"In the function created by create_si_triangle_barrier_certificate, the robto states (x) must be a numpy array. Received {type(x).__name__}"
-        
-        # Check input ranges / sizes
-        assert x.shape[0] == 2, \
-            f"In the function created by create_si_triangle_barrier_certificate, the dimension of the single integrator robot states (x) must be 2 ([x;y]). Received dimension {x.shape[0]}"
-        assert dxi.shape[0] == 2, \
-            f"In the function created by create_si_triangle_barrier_certificate, the dimension of the robot single integrator velocity command (dxi) must be 2 ([x_dot;y_dot]). Received dimension {dxi.shape[0]}"
-        assert x.shape[1] == dxi.shape[1], \
-            f"In the function created by create_si_triangle_barrier_certificate, the number of robot states (x) must be equal to the number of robot single integrator velocity commands (dxi). Received a current robot pose input array (x) of size {x.shape[0]} x {x.shape[1]} and a single_integrator velocity array (dxi) of size {dxi.shape[0]} x {dxi.shape[1]}"
-        
-        N = dxi.shape[1]
-        num_constraints = int(comb(N, 2))
-        A = np.zeros((num_constraints, 2*N))
-        b = np.zeros(num_constraints)
-        H = sparse(matrix(2*np.identity(2*N)))
-        h_min = 1e99
-
-        count = 0
-        for i in range(N-1):
-            for j in range(i+1, N):
-                dx = x[0, i] - x[0, j]
-                dy = x[1, i] - x[1, j]
-
-                # The three exponentials
-                e1 = np.exp(4*dx + 4*np.sqrt(3)*dy)
-                e2 = np.exp(-8*dx)
-                e3 = np.exp(4*dx - 4*np.sqrt(3)*dy)
-                
-                h = 3/5 * np.log(e1 + e2 + e3) - 1
-
-                # The denominator for the gradients
-                denom = e1 + e2 + e3
-                L_g1 = 3 * (4*e1 -8*e2 + 4*e3) / (5 * denom)
-                L_g2 = 3 * (4*np.sqrt(3)*e1 - 4*np.sqrt(3)*e3) / (5 * denom)
-                L_g3 = -L_g1
-                L_g4 = -L_g2
-
-                A[count, 2*i] = -L_g1
-                A[count, 2*i+1] = -L_g2
-                A[count, 2*j] = -L_g3
-                A[count, 2*j+1] = -L_g4
-                b[count] = barrier_gain * np.power(h, 3)
-                count += 1
-
-                if h < h_min:
-                    h_min = h
-
-        norms = np.linalg.norm(dxi, 2, 0)
-        idxs_to_normalize = (norms > magnitude_limit)
-        dxi[:, idxs_to_normalize] *= magnitude_limit / norms[idxs_to_normalize]
-
-        f = -2 * np.reshape(dxi, 2*N, order="F")
-        result = qp(H, matrix(f), matrix(A), matrix(b))["x"]
-
-        return np.reshape(result, (2, -1), order="F"), h_min
-
-    return f
 
 def create_single_integrator_barrier_certificate(barrier_gain=100, safety_radius=0.17, magnitude_limit=0.2):
     """Creates a barrier certificate for a single-integrator system.  This function
@@ -974,203 +773,6 @@ def create_single_integrator_barrier_certificate(barrier_gain=100, safety_radius
 
         return np.reshape(result, (2, -1), order='F'), h_min
 
-    return f
-
-def create_single_integrator_barrier_certificate_decentralized(agent_index, barrier_gain=100, safety_radius=0.17, magnitude_limit=0.2):
-    """Creates a barrier certificate for a single-integrator system.  This function
-    returns another function for optimization reasons.
-
-    barrier_gain: double (controls how quickly agents can approach each other.  lower = slower)
-    safety_radius: double (how far apart the agents will stay)
-    magnitude_limit: how fast the robot can move linearly.
-
-    -> function (the barrier certificate function)
-    """
-
-    #Check user input types
-    assert isinstance(agent_index, int), "Agent index must be an integer. Received type %r." % type(agent_index).__name__
-    assert isinstance(barrier_gain, (int, float)), "In the function create_single_integrator_barrier_certificate, the barrier gain (barrier_gain) must be an integer or float. Recieved type %r." % type(barrier_gain).__name__
-    assert isinstance(safety_radius, (int, float)), "In the function create_single_integrator_barrier_certificate, the safe distance between robots (safety_radius) must be an integer or float. Recieved type %r." % type(safety_radius).__name__
-    assert isinstance(magnitude_limit, (int, float)), "In the function create_single_integrator_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be an integer or float. Recieved type %r." % type(magnitude_limit).__name__
-
-    #Check user input ranges/sizes
-    assert barrier_gain > 0, "In the function create_single_integrator_barrier_certificate, the barrier gain (barrier_gain) must be positive. Recieved %r." % barrier_gain
-    assert safety_radius >= 0.12, "In the function create_single_integrator_barrier_certificate, the safe distance between robots (safety_radius) must be greater than or equal to the diameter of the robot (0.12m) plus the distance to the look ahead point used in the diffeomorphism if that is being used. Recieved %r." % safety_radius
-    assert magnitude_limit > 0, "In the function create_single_integrator_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be positive. Recieved %r." % magnitude_limit
-    assert magnitude_limit <= 0.2, "In the function create_single_integrator_barrier_certificate, the maximum linear velocity of the robot (magnitude_limit) must be less than the max speed of the robot (0.2m/s). Recieved %r." % magnitude_limit
-
-
-    def f(dxi, x):
-        #Check user input types
-        assert isinstance(dxi, np.ndarray), "In the function created by the create_single_integrator_barrier_certificate function, the single-integrator robot velocity command (dxi) must be a numpy array. Recieved type %r." % type(dxi).__name__
-        assert isinstance(x, np.ndarray), "In the function created by the create_single_integrator_barrier_certificate function, the robot states (x) must be a numpy array. Recieved type %r." % type(x).__name__
-
-        #Check user input ranges/sizes
-        assert x.shape[0] == 2, "In the function created by the create_single_integrator_barrier_certificate function, the dimension of the single integrator robot states (x) must be 2 ([x;y]). Recieved dimension %r." % x.shape[0]
-        assert dxi.shape[0] == 2, "In the function created by the create_single_integrator_barrier_certificate function, the dimension of the robot single integrator velocity command (dxi) must be 2 ([x_dot;y_dot]). Recieved dimension %r." % dxi.shape[0]
-        # assert x.shape[1] == dxi.shape[1], "In the function created by the create_single_integrator_barrier_certificate function, the number of robot states (x) must be equal to the number of robot single integrator velocity commands (dxi). Recieved a current robot pose input array (x) of size %r x %r and single integrator velocity array (dxi) of size %r x %r." % (x.shape[0], x.shape[1], dxi.shape[0], dxi.shape[1])
-
-        
-        # Initialize some variables for computational savings
-        N = dxi.shape[1]
-        num_constraints = int(N-1)
-        A = np.zeros((num_constraints, 2))
-        b = np.zeros(num_constraints)
-        H = sparse(matrix(2*np.identity(2)))
-
-        count = 0
-        #Centralized QP
-        for j in range(N):
-            if j != agent_index:  # Skip the agent itself
-                error = x[:, agent_index] - x[:, j]  # Relative position
-                h = (error[0]*error[0] + error[1]*error[1]) - np.power(safety_radius, 2)
-                A[count, (0, 1)] = -2*error
-                b[count] = barrier_gain*np.power(h, 3)
-
-                count += 1
-
-        # Threshold control inputs before QP
-        norm = np.linalg.norm(dxi[:,agent_index], 2)
-        # idxs_to_normalize = (norms > magnitude_limit)
-        if norm > magnitude_limit:
-            dxi *= magnitude_limit/norm
-
-        f = -2*np.reshape(dxi[:,agent_index], 2, order='F')
-        result = qp(H, matrix(f), matrix(A), matrix(b))['x']
-
-        return np.reshape(result, (2, -1), order='F')
-
-    return f
-
-def create_single_integrator_barrier_certificate_ellipse_decentralized(agent_index, barrier_gain=100, safety_a=0.17, safety_b=0.12, magnitude_limit=0.2):
-    """Creates a barrier certificate for a single-integrator system with an elliptical safety region.
-    
-    barrier_gain: double (controls how quickly agents can approach each other. lower = slower)
-    safety_a: double (semi-major axis of the safety ellipse)
-    safety_b: double (semi-minor axis of the safety ellipse)
-    magnitude_limit: double (how fast the robot can move linearly)
-
-    -> function (the barrier certificate function)
-    """
-
-    # Check user input types
-    assert isinstance(agent_index, int), "Agent index must be an integer. Received type %r." % type(agent_index).__name__
-    assert isinstance(barrier_gain, (int, float)), "The barrier gain must be an integer or float. Received type %r." % type(barrier_gain).__name__
-    assert isinstance(safety_a, (int, float)), "The semi-major axis of the safety ellipse must be an integer or float. Received type %r." % type(safety_a).__name__
-    assert isinstance(safety_b, (int, float)), "The semi-minor axis of the safety ellipse must be an integer or float. Received type %r." % type(safety_b).__name__
-    assert isinstance(magnitude_limit, (int, float)), "The maximum linear velocity of the robot must be an integer or float. Received type %r." % type(magnitude_limit).__name__
-
-    # Check user input ranges/sizes
-    assert barrier_gain > 0, "The barrier gain must be positive. Received %r." % barrier_gain
-    assert safety_a > 0 and safety_b > 0, "The semi-major and semi-minor axes must be positive. Received a: %r, b: %r." % (safety_a, safety_b)
-    assert magnitude_limit > 0, "The maximum linear velocity of the robot must be positive. Received %r." % magnitude_limit
-
-    def f(dxi, x,theta):
-        # Check user input types
-        assert isinstance(dxi, np.ndarray), "The single-integrator robot velocity command must be a numpy array. Received type %r." % type(dxi).__name__
-        assert isinstance(x, np.ndarray), "The robot states must be a numpy array. Received type %r." % type(x).__name__
-
-        # Check user input ranges/sizes
-        assert x.shape[0] == 2, "The dimension of the single integrator robot states must be 2 ([x;y]). Received dimension %r." % x.shape[0]
-        assert dxi.shape[0] == 2, "The dimension of the robot single integrator velocity command must be 2 ([x_dot;y_dot]). Received dimension %r." % dxi.shape[0]
-        assert x.shape[1] == dxi.shape[1], "The number of robot states must be equal to the number of robot single integrator velocity commands. Received x: %r x %r, dxi: %r x %r." % (x.shape[0], x.shape[1], dxi.shape[0], dxi.shape[1])
-
-        # Initialize variables for computational savings
-        N = dxi.shape[1]
-        num_constraints = int((N - 1))
-        A = np.zeros((num_constraints, 2))
-        b = np.zeros(num_constraints)
-        H = sparse(matrix(2 * np.identity(2)))
-
-        count = 0
-
-        # decentralized QP
-        for i in range(N):
-            if i != agent_index:  # Skip the agent itself
-                error = x[:, agent_index] - x[:, j]
-                error_1 = (error[0]*np.cos(theta[agent_index])+error[1]*np.sin(theta[agent_index])) / safety_a
-                error_2 = (error[0]*np.sin(theta[agent_index])-error[1]*np.cos(theta[agent_index])) / safety_b
-                h = error_1**2 + error_2**2 - 1    
-
-                # if np.mod(agent_index,2) == 0:
-                    # theta[agent_index] = theta[agent_index] + np.pi/4
-                A[count, 0] = -2 * ((error[0])*np.cos(theta[agent_index])+(error[1])*np.sin(theta[agent_index]))*np.cos(theta[agent_index])/ safety_a**2 - 2 * ((error[0])*np.sin(theta[agent_index])-(error[1])*np.cos(theta[agent_index]))*np.sin(theta[agent_index])/ safety_b**2
-                A[count, 1] = -2 * ((error[0])*np.cos(theta[agent_index])+(error[1])*np.sin(theta[agent_index]))*np.sin(theta[agent_index])/ safety_a**2 - 2 * ((error[0])*np.sin(theta[agent_index])-(error[1])*np.cos(theta[agent_index]))*-np.cos(theta[agent_index])/ safety_b**2
-                A[count, 2*j] = 2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.cos(theta[i])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*np.sin(theta[i])/ safety_b**2
-                A[count, 2*j+1] = 2 * ((error[0])*np.cos(theta[i])+(error[1])*np.sin(theta[i]))*np.sin(theta[i])/ safety_a**2 + 2 * ((error[0])*np.sin(theta[i])-(error[1])*np.cos(theta[i]))*-np.cos(theta[i])/ safety_b**2
-                # else:
-                #     # theta[agent_index] = theta[agent_index] - np.pi/4
-                #     A[count, 0] = -2 * ((error[0])*np.cos(theta[i])-(error[1])*np.sin(theta[i]))*np.cos(theta[i])/ safety_b**2 - 2 * ((error[0])*np.sin(theta[i])+(error[1])*np.cos(theta[i]))*np.sin(theta[i])/ safety_a**2
-                #     A[count, 1] = -2 * ((error[0])*np.cos(theta[i])-(error[1])*np.sin(theta[i]))*-np.sin(theta[i])/ safety_b**2 - 2 * ((error[0])*np.sin(theta[i])+(error[1])*np.cos(theta[i]))*np.cos(theta[i])/ safety_a**2
-                #     A[count, 2*j] = 2 * ((error[0])*np.cos(theta[i])-(error[1])*np.sin(theta[i]))*np.cos(theta[i])/ safety_b**2 + 2 * ((error[0])*np.sin(theta[i])+(error[1])*np.cos(theta[i]))*np.sin(theta[i])/ safety_a**2
-                #     A[count, 2*j+1] = 2 * ((error[0])*np.cos(theta[i])-(error[1])*np.sin(theta[i]))*-np.sin(theta[i])/ safety_b**2 + 2 * ((error[0])*np.sin(theta[i])+(error[1])*np.cos(theta[i]))*np.cos(theta[i])/ safety_a**2
-
-                b[count] = barrier_gain * h**3
-                count += 1
-
-        # Threshold control inputs before QP
-        norm = np.linalg.norm(dxi[:,agent_index], 2)
-        # idxs_to_normalize = (norms > magnitude_limit)
-        if norm > magnitude_limit:
-            dxi *= magnitude_limit/norm
-
-        f = -2*np.reshape(dxi[:,agent_index], 2, order='F')
-        result = qp(H, matrix(f), matrix(A), matrix(b))['x']
-
-        return np.reshape(result, (2, -1), order='F')
-
-    return f
-
-def create_unicycle_barrier_certificate_ellipse(
-    barrier_gain: float = 100,
-    safety_a: float = 0.17,
-    safety_b: float = 0.12,
-    magnitude_limit: float = 0.2
-) -> Callable[[np.ndarray, np.ndarray], np.ndarray]:
-    def f(dxi: np.ndarray, x: np.ndarray) -> np.ndarray:
-        N = dxi.shape[1]
-        num_constraints = int(comb(N, 2))
-        A = np.zeros((num_constraints, 2*N))
-        b = np.zeros(num_constraints)
-        H = sparse(matrix(2*np.identity(2*N)))
-        h_min = 1e99
-
-        count = 0
-
-        a_s = 1 / safety_a ** 2
-        b_s = 1 / safety_b ** 2
-        cos = np.cos(x[2, :])
-        sin = np.sin(x[2, :])
-
-        for i in range(N-1):
-            for j in range(i+1, N):
-                dx = x[0, i] - x[0, j]
-                dy = x[1, i] - x[1, j]
-                dx_r = cos[i] * (dx) + sin[i] * (dy)
-                dy_r = -sin[i] * (dx) + cos[i] * (dy)
-                h = a_s * np.power(dx_r, 2) + b_s * np.power(dy_r, 2) - 1
-                L_g1 = cos[i] * (2 * cos[i] * a_s * dx_r - 2 * sin[i] * b_s * dy_r) \
-                    + sin[i] * (2 * sin[i] * a_s * dx_r + 2 * cos[i] * b_s * dy_r)
-                L_g2 = 2 * a_s * dx_r * (-sin[i] * (dx) + cos[i] * (dy)) \
-                    + 2 * b_s * dy_r * (-cos[i] * (dx) - sin[i] * (dy))
-                L_g3 = cos[j] * (-2 * cos[i] * a_s * dx_r + 2 * sin[i] * b_s * dy_r) \
-                    + sin[j] * (-2 * sin[i] * a_s * dx_r - 2 * cos[i] * b_s * dy_r)
-                L_g4 = 0
-                A[count, 2*i] = -L_g1
-                A[count, 2*i+1] = -L_g2
-                A[count, 2*j] = -L_g3
-                A[count, 2*j+1] = -L_g4
-                b[count] = barrier_gain * np.power(h, 3)
-                count += 1
-
-                if h < h_min:
-                    h_min = h
-
-        # TODO: Threshold control inputs
-        f = -2 * np.reshape(dxi, 2*N, order="F")
-        result = qp(H, matrix(f), matrix(A), matrix(b))['x']
-
-        return np.reshape(result, (2, -1), order="F"), h_min
     return f
 
 

@@ -494,8 +494,8 @@ u_norms_array = np.column_stack((norm_dxi_cir_list, norm_dxi_ellip_list, norm_dx
 
 #Save Data
 print(time.time() - exp_start_time)
-np.save('trajectories', trajectories)
-np.save("u_norms", u_norms_array)
+np.save('trajectories', trajectories) # IMPORTANT
+np.save("u_norms", u_norms_array) # IMPORTANT + H_MIN
 np.save("lamb_list", lamb_list)
 np.save("Delta_list", Delta_list)
 np.save("target_list", target_list)

@@ -2,6 +2,9 @@
 # Robots moving to random goals
 #
 
+import warnings
+warnings.filterwarnings("ignore", module="matplotlib")
+
 import rps.robotarium as robotarium
 from rps.utilities.transformations import create_si_to_uni_mapping
 from rps.utilities.misc import determine_marker_size, determine_font_size
@@ -10,15 +13,14 @@ from rps.utilities.transformations import create_si_to_uni_mapping
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 import time
-import itertools
+import os
 
 from barrier_certificates import (
-    BarrierCertificate,
     SICircularBarrierCertificate,
     SIEllipticalBarrierCertificate,
     SISquareBarrierCertificate,
-    SITriangleBarrierCertificate,
     SIDeltaBarrierCertificate,
     Obstacle
 )
@@ -27,9 +29,11 @@ from graphing_utilities import init_hvis, update_hvis
 def row_x(n, x_left, x_right):
     return np.linspace(x_left, x_right, n) if n > 0 else np.array([])
 
-def generate_initial_conditions(N: int) -> tuple[np.ndarray, np.ndarray]:
+def generate_initial_conditions(N):
     # Layout params
     rect_width   = 2.8
+    if N == 20:
+        rect_width = 3.1
     rect_height  = 1.6
     margin_x     = 0.2        
     two_row_thresh = 8          # switch to two rows when N >= 8
@@ -86,74 +90,80 @@ obj_r = 0.16
 o1 = Obstacle(np.array([-0.6, 0]), obj_r)
 o2 = Obstacle(np.array([0.6, 0]), obj_r)
 
-radius = 0.22
-a = 0.25
-b = 0.25*0.8
-w = 0.40
+radius = 0.175
+a = 0.2
+b = 0.15
+w = 0.175
 
 circular_barrier = SICircularBarrierCertificate(
-    barrier_gain=10,
     safety_radius=radius,
-    magnitude_limit=0.1,
-    obstacle_gain=10,
     obstacles=[o1, o2]
 )
 elliptical_barrier = SIEllipticalBarrierCertificate(
-    barrier_gain=10,
-    safety_a=a,
-    safety_b=b,
-    magnitude_limit=0.1,
-    obstacle_gain=10,
+    safety_a=0.2,
+    safety_b=0.15,
+    obstacles=[o1, o2]
+)
+vert_barrier = SIEllipticalBarrierCertificate(
+    safety_a=0.15,
+    safety_b=0.2,
     obstacles=[o1, o2]
 )
 square_barrier = SISquareBarrierCertificate(
-    barrier_gain=10,
-    safety_width=w,
-    magnitude_limit=0.1,
-    obstacle_gain=10,
+    safety_width=0.175,
     obstacles=[o1, o2]
 )
-triangle_barrier = SITriangleBarrierCertificate(
-    barrier_gain=10,
-    magnitude_limit=0.1,
-    obstacle_gain=10,
+l2_barrier = SIDeltaBarrierCertificate(
+    barriers=[
+        square_barrier,
+        vert_barrier,
+    ],
     obstacles=[o1, o2]
 )
-# barrier = SIDeltaBarrierCertificate(
-#     barrier_gain=10,
-#     magnitude_limit=0.1,
-#     barriers=[
-#         circular_barrier,
-#         elliptical_barrier,
-#         triangle_barrier,
-#         square_barrier
-#     ],
-#     obstacle_gain=10,
-#     obstacles=[o1, o2]
-# )
-barrier = circular_barrier
+l3_barrier = SIDeltaBarrierCertificate(
+    barriers=[
+        square_barrier,
+        vert_barrier,
+        circular_barrier
+    ],
+    obstacles=[o1, o2]
+)
+l4_barrier = SIDeltaBarrierCertificate(
+    barriers=[
+        square_barrier,
+        vert_barrier,
+        circular_barrier,
+        elliptical_barrier
+    ],
+    obstacles=[o1, o2]
+)
+ellipses = SIDeltaBarrierCertificate(
+    barriers=[
+        elliptical_barrier,
+        vert_barrier
+    ],
+    obstacles=[o1, o2]
+)
 
-names = []
-ns = []
-seeds = []
-completion_times = []
-negative_hs = []
-circle_weights = []
-ellipse_weights = []
-triangle_weights = []
-square_weights = []
+barrier = vert_barrier
+N = 8
+seed = 1
 
-N = 4
+os.makedirs(f"./data/{barrier.name()}/{seed}", exist_ok=True)
 
-rng = np.random.default_rng(2)
+print(f"Running with {barrier.name()} at N={N}, Seed={seed}...")
+
+rng = np.random.default_rng(seed)
 initial_conditions, goal_points = generate_initial_conditions(N)
 perm = rng.permutation(N)
 goal_points = goal_points[:, perm]
 
 r = robotarium.Robotarium(
     number_of_robots=N,
-    show_figure=False,
+    show_figure=True,
+    enable_safety=False,
     sim_in_real_time=True,
+    drive_forward=False,
     initial_conditions=initial_conditions
 )
 
@@ -163,7 +173,7 @@ CM = cmap(np.linspace(0, 1, N))
 safety_radius_marker_size = determine_marker_size(r, radius)
 font_height_points = determine_font_size(r, 0.2)
 
-H = init_hvis(r.axes, N, CM, radius=radius, a=a, b=b, w=w, grid_res=201, line_w=2)
+H = init_hvis(r.axes, N, CM, radius=radius*2, a=a*2, b=b*2, w=2*w, grid_res=201, line_w=2)
 
 obj_r_marker_size = determine_marker_size(r, obj_r)
 r.axes.scatter(o1.position[0], o1.position[1], s=obj_r_marker_size, marker='o', facecolors=[1, 0, 0], linewidth=5, zorder=-3)
@@ -189,17 +199,28 @@ for ii in range(goal_points.shape[1])]
 goal_markers = [r.axes.scatter(goal_points[0,ii], goal_points[1,ii], s=marker_size_goal, marker='s', facecolors='none',edgecolors=CM[ii,:],linewidth=line_width,zorder=-3)
 for ii in range(goal_points.shape[1])]
 
-trajectories = [[] for i in range(N)]
+trajectories = [[] for _ in range(N)]
+si_trajectories = [[] for _ in range(N)]
 
 t = 0
 dt = None
 prev_time = None
 
 x = r.get_poses()
+circles = [patches.Circle((x[0, i], x[1, i]), radius=0.1, color="red") for i in range(N)]
+for circle in circles:
+    r.axes.add_patch(circle)
+    circle.set_visible(False)
+
+position_circles = [patches.Circle((x[0, i], x[1, i]), radius=0.001, color="blue") for i in range(N)]
+for circle in position_circles:
+    r.axes.add_patch(circle)
+    circle.set_visible(True)
 thetas = x[2, :]
 L = 0.05
 r.step()
 
+times = []
 h_values = []
 u_values = []
 simulation_weights = []
@@ -209,20 +230,41 @@ complete = False
 # Maximum of 4 minutes of time
 max_iterations = 30 * 60 * 4
 start_time = time.time()
+zeros_iterations = 0
 while time.time() - start_time < 60 * 4:
     x = r.get_poses()
-
+    times.append(time.time() - start_time)
     for i in range(N):
         trajectories[i].append(x[:, i].copy())
 
     x_si = uni_to_si(x)
+    for i in range(N):
+        position_circles[i].center = (x_si[0, i], x_si[1, i])
+        si_trajectories[i].append(x[:, i].copy())
     dxi = controller(x_si, goal_points[:2, :])
-    dxi, h = barrier.apply(dxi, x_si)
-    u_values.append(np.sum(np.linalg.norm(dxi, axis=0)) / N)
+    dxi, h, negative_idxs = barrier.apply(dxi, x_si, x[2, :])
+    u_norm = np.sum(np.linalg.norm(dxi, axis=0)) / N
+    u_values.append(u_norm)
+    if u_norm < 1e-3:
+        zeros_iterations += 1
+    else:
+        zeros_iterations = 0
+    # If the control inputs are near zero for 20 consecutive seconds, we can assume we have reached a deadlock
+    if zeros_iterations >= 20 * 30:
+        print("Deadlock")
+        break
     dxu = si_to_uni(dxi, x)
+
+    for i in range(N):
+        if i in negative_idxs:
+            circles[i].set_visible(True)
+            circles[i].center = (x_si[0, i], x_si[1, i])
+        else:
+            circles[i].set_visible(False)
 
     if h < 0:
         negative_iterations += 1
+
     h_values.append(h)
 
     if isinstance(barrier, SIDeltaBarrierCertificate):
@@ -232,7 +274,7 @@ while time.time() - start_time < 60 * 4:
         
         update_hvis(H, x, thetas, L, barrier.current_shape(), barrier.target_shape(), 1,
                         plot_scale=0.45, densify=True, densify_factor=150.0)
-
+        
     r.set_velocities(np.arange(N), dxu)
 
     if np.linalg.norm(goal_points[:2, :] - x_si) < 0.08:
@@ -244,11 +286,14 @@ while time.time() - start_time < 60 * 4:
     iterations += 1
 
 if complete:
-    print(time.time() - start_time)
+    elapsed_time = time.time() - start_time
+    print(elapsed_time)
 else:
     print(0.0)
-np.save("trajectories", trajectories)
-np.save("h_min", np.array(h_values))
-np.save("u_avgs", np.array(u_values))
-np.save("barrier_weights", np.array(simulation_weights))
+np.save(f"./data/{barrier.name()}/{seed}/trajectories", trajectories)
+np.save(f"./data/{barrier.name()}/{seed}/h_min", np.array(h_values))
+print(f"Negative Iterations: {negative_iterations}")
+print(f"Max Violating: {np.min(h_values)}")
+np.save(f"./data/{barrier.name()}/{seed}/u_avgs", np.array(u_values))
+np.save(f"./data/{barrier.name()}/{seed}/barrier_weights", np.array(simulation_weights))
 plt.close('all')
